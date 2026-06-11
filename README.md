@@ -56,21 +56,31 @@ Outputs:
 
 - `image` (IMAGE)
 - `pad_left`, `pad_right`, `pad_top`, `pad_bottom` (INT)
+- `padding` (PADDING_TUPLE): the four pad amounts plus `pad_color` bundled on a single link.
 
 ### Crop Image By Padding
 
 Reverse of `Pad Image To Divisible`. Removes the supplied pad amounts from
-each side. Wire the four pad outputs from the pad node straight into this one
-after running the model.
+each side. Wire either the four `pad_*` outputs or the bundled `padding`
+output from the pad node into this one after running the model.
 
 Inputs:
 
 - `image` (IMAGE)
 - `pad_left`, `pad_right`, `pad_top`, `pad_bottom` (INT)
+- `padding` (PADDING_TUPLE, optional): when connected, overrides the four individual `pad_*` inputs.
 
 Output:
 
 - `image` (IMAGE)
+
+### Pack / Unpack Padding Tuple
+
+`PADDING_TUPLE` is a small custom socket type carrying
+`pad_left`, `pad_right`, `pad_top`, `pad_bottom`, and `pad_color` together.
+
+- **Pack Padding Tuple** — inputs: four INTs + `pad_color` STRING; output: `padding` (PADDING_TUPLE).
+- **Unpack Padding Tuple** — input: `padding` (PADDING_TUPLE); outputs: four INTs + `pad_color` STRING.
 
 Typical LTX-Video 2.3 wiring:
 

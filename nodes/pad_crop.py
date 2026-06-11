@@ -32,6 +32,23 @@ def _parse_hex_color(value: str) -> tuple[float, float, float]:
     return r, g, b
 
 
+def _make_padding_tuple(
+    pad_left: int,
+    pad_right: int,
+    pad_top: int,
+    pad_bottom: int,
+    pad_color: str,
+) -> dict:
+    """Build the dict that flows on a ``PADDING_TUPLE`` link."""
+    return {
+        "pad_left": int(pad_left),
+        "pad_right": int(pad_right),
+        "pad_top": int(pad_top),
+        "pad_bottom": int(pad_bottom),
+        "pad_color": str(pad_color),
+    }
+
+
 def _split_pad(total: int, mode: str, side: str) -> tuple[int, int]:
     """Return ``(before, after)`` padding amounts.
 
@@ -67,8 +84,8 @@ class PadImageToDivisible:
     CATEGORY = "image/transform"
     FUNCTION = "pad"
 
-    RETURN_TYPES = ("IMAGE", "INT", "INT", "INT", "INT")
-    RETURN_NAMES = ("image", "pad_left", "pad_right", "pad_top", "pad_bottom")
+    RETURN_TYPES = ("IMAGE", "INT", "INT", "INT", "INT", "PADDING_TUPLE")
+    RETURN_NAMES = ("image", "pad_left", "pad_right", "pad_top", "pad_bottom", "padding")
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -131,7 +148,8 @@ class PadImageToDivisible:
         pad_left, pad_right = _split_pad(dw, mode, asymmetric_side)
 
         if dh == 0 and dw == 0:
-            return (image, 0, 0, 0, 0)
+            empty = _make_padding_tuple(0, 0, 0, 0, pad_color)
+            return (image, 0, 0, 0, 0, empty)
 
         r, g, b_col = _parse_hex_color(pad_color)
         # Build padding color matching the channel count. For non-RGB inputs
@@ -148,7 +166,8 @@ class PadImageToDivisible:
         out[...] = color_t  # broadcast fill
         out[:, pad_top : pad_top + h, pad_left : pad_left + w, :] = image
 
-        return (out, pad_left, pad_right, pad_top, pad_bottom)
+        padding = _make_padding_tuple(pad_left, pad_right, pad_top, pad_bottom, pad_color)
+        return (out, pad_left, pad_right, pad_top, pad_bottom, padding)
 
 
 class CropImageByPadding:
@@ -175,9 +194,26 @@ class CropImageByPadding:
                 "pad_top": ("INT", {"default": 0, "min": 0, "max": 8192}),
                 "pad_bottom": ("INT", {"default": 0, "min": 0, "max": 8192}),
             },
+            "optional": {
+                "padding": (
+                    "PADDING_TUPLE",
+                    {
+                        "tooltip": (
+                            "Optional bundled padding (from PadImageToDivisible or "
+                            "PackPaddingTuple). When connected, overrides the four "
+                            "individual pad_* inputs."
+                        ),
+                    },
+                ),
+            },
         }
 
-    def crop(self, image, pad_left, pad_right, pad_top, pad_bottom):
+    def crop(self, image, pad_left, pad_right, pad_top, pad_bottom, padding=None):
+        if padding is not None:
+            pad_left = int(padding.get("pad_left", pad_left))
+            pad_right = int(padding.get("pad_right", pad_right))
+            pad_top = int(padding.get("pad_top", pad_top))
+            pad_bottom = int(padding.get("pad_bottom", pad_bottom))
         if image.ndim != 4:
             raise ValueError(
                 f"CropImageByPadding expects [B,H,W,C] tensor, got shape {tuple(image.shape)}"
@@ -195,12 +231,80 @@ class CropImageByPadding:
         return (image[:, pad_top:bottom, pad_left:right, :].contiguous(),)
 
 
+class PackPaddingTuple:
+    """Bundle four pad amounts and a pad color into a single PADDING_TUPLE."""
+
+    CATEGORY = "image/transform"
+    FUNCTION = "pack"
+
+    RETURN_TYPES = ("PADDING_TUPLE",)
+    RETURN_NAMES = ("padding",)
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "pad_left": ("INT", {"default": 0, "min": 0, "max": 8192}),
+                "pad_right": ("INT", {"default": 0, "min": 0, "max": 8192}),
+                "pad_top": ("INT", {"default": 0, "min": 0, "max": 8192}),
+                "pad_bottom": ("INT", {"default": 0, "min": 0, "max": 8192}),
+                "pad_color": (
+                    "STRING",
+                    {
+                        "default": "#000000",
+                        "tooltip": "Hex color associated with the padding, e.g. #000000.",
+                    },
+                ),
+            },
+        }
+
+    def pack(self, pad_left, pad_right, pad_top, pad_bottom, pad_color):
+        return (
+            _make_padding_tuple(pad_left, pad_right, pad_top, pad_bottom, pad_color),
+        )
+
+
+class UnpackPaddingTuple:
+    """Split a PADDING_TUPLE into its four pad amounts and pad color."""
+
+    CATEGORY = "image/transform"
+    FUNCTION = "unpack"
+
+    RETURN_TYPES = ("INT", "INT", "INT", "INT", "STRING")
+    RETURN_NAMES = ("pad_left", "pad_right", "pad_top", "pad_bottom", "pad_color")
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "padding": ("PADDING_TUPLE",),
+            },
+        }
+
+    def unpack(self, padding):
+        if not isinstance(padding, dict):
+            raise ValueError(
+                f"UnpackPaddingTuple: expected PADDING_TUPLE dict, got {type(padding).__name__}"
+            )
+        return (
+            int(padding.get("pad_left", 0)),
+            int(padding.get("pad_right", 0)),
+            int(padding.get("pad_top", 0)),
+            int(padding.get("pad_bottom", 0)),
+            str(padding.get("pad_color", "#000000")),
+        )
+
+
 NODE_CLASS_MAPPINGS = {
     "PadImageToDivisible": PadImageToDivisible,
     "CropImageByPadding": CropImageByPadding,
+    "PackPaddingTuple": PackPaddingTuple,
+    "UnpackPaddingTuple": UnpackPaddingTuple,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "PadImageToDivisible": "Pad Image To Divisible",
     "CropImageByPadding": "Crop Image By Padding",
+    "PackPaddingTuple": "Pack Padding Tuple",
+    "UnpackPaddingTuple": "Unpack Padding Tuple",
 }
