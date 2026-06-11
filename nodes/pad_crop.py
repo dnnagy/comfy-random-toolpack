@@ -231,6 +231,74 @@ class CropImageByPadding:
         return (image[:, pad_top:bottom, pad_left:right, :].contiguous(),)
 
 
+class ComputePaddingToDivisible:
+    """Compute pad amounts to make ``width`` and ``height`` divisible by ``divisor``.
+
+    Same math as :class:`PadImageToDivisible`, but operates purely on integers
+    without touching an image. Useful for pre-computing target dimensions for
+    empty latents, downstream resolution-aware nodes, etc.
+    """
+
+    CATEGORY = "image/transform"
+    FUNCTION = "compute"
+
+    RETURN_TYPES = (
+        "INT", "INT", "INT", "INT", "INT", "INT", "PADDING_TUPLE",
+    )
+    RETURN_NAMES = (
+        "pad_left", "pad_right", "pad_top", "pad_bottom",
+        "padded_width", "padded_height", "padding",
+    )
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "width": ("INT", {"default": 1280, "min": 1, "max": 16384}),
+                "height": ("INT", {"default": 720, "min": 1, "max": 16384}),
+                "divisor": (
+                    "INT",
+                    {
+                        "default": 32,
+                        "min": 1,
+                        "max": 4096,
+                        "tooltip": "Both width and height are rounded up to a multiple of this value.",
+                    },
+                ),
+                "mode": (
+                    ("symmetric", "asymmetric"),
+                    {"default": "symmetric"},
+                ),
+                "asymmetric_side": (
+                    ("end", "start"),
+                    {
+                        "default": "end",
+                        "tooltip": "Only used when mode=asymmetric. end = bottom/right, start = top/left.",
+                    },
+                ),
+                "pad_color": (
+                    "STRING",
+                    {
+                        "default": "#000000",
+                        "tooltip": "Hex color stored in the PADDING_TUPLE output (no image is produced).",
+                    },
+                ),
+            },
+        }
+
+    def compute(self, width, height, divisor, mode, asymmetric_side, pad_color):
+        new_w = ((width + divisor - 1) // divisor) * divisor
+        new_h = ((height + divisor - 1) // divisor) * divisor
+        dw = new_w - width
+        dh = new_h - height
+
+        pad_left, pad_right = _split_pad(dw, mode, asymmetric_side)
+        pad_top, pad_bottom = _split_pad(dh, mode, asymmetric_side)
+
+        padding = _make_padding_tuple(pad_left, pad_right, pad_top, pad_bottom, pad_color)
+        return (pad_left, pad_right, pad_top, pad_bottom, new_w, new_h, padding)
+
+
 class PackPaddingTuple:
     """Bundle four pad amounts and a pad color into a single PADDING_TUPLE."""
 
@@ -298,6 +366,7 @@ class UnpackPaddingTuple:
 NODE_CLASS_MAPPINGS = {
     "PadImageToDivisible": PadImageToDivisible,
     "CropImageByPadding": CropImageByPadding,
+    "ComputePaddingToDivisible": ComputePaddingToDivisible,
     "PackPaddingTuple": PackPaddingTuple,
     "UnpackPaddingTuple": UnpackPaddingTuple,
 }
@@ -305,6 +374,7 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "PadImageToDivisible": "Pad Image To Divisible",
     "CropImageByPadding": "Crop Image By Padding",
+    "ComputePaddingToDivisible": "Compute Padding To Divisible",
     "PackPaddingTuple": "Pack Padding Tuple",
     "UnpackPaddingTuple": "Unpack Padding Tuple",
 }

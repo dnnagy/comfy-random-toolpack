@@ -74,6 +74,26 @@ Output:
 
 - `image` (IMAGE)
 
+### Compute Padding To Divisible
+
+Same math as `Pad Image To Divisible`, but works on integers only — no image
+is touched. Useful for pre-computing target dimensions for empty latents or
+other resolution-aware nodes.
+
+Inputs:
+
+- `width`, `height` (INT)
+- `divisor` (INT, default `32`)
+- `mode` (`symmetric` | `asymmetric`)
+- `asymmetric_side` (`end` | `start`)
+- `pad_color` (STRING, default `#000000`) — stored in the PADDING_TUPLE output.
+
+Outputs:
+
+- `pad_left`, `pad_right`, `pad_top`, `pad_bottom` (INT)
+- `padded_width`, `padded_height` (INT)
+- `padding` (PADDING_TUPLE)
+
 ### Pack / Unpack Padding Tuple
 
 `PADDING_TUPLE` is a small custom socket type carrying
