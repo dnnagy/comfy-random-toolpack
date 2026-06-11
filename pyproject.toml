@@ -1,0 +1,18 @@
+[project]
+name = "comfy-random-toolpack"
+description = "A grab-bag of small, useful ComfyUI custom nodes."
+version = "0.1.0"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+dependencies = []
+classifiers = [
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Repository = "https://github.com/dnnagy/comfy-random-toolpack"
+"Bug Tracker" = "https://github.com/dnnagy/comfy-random-toolpack/issues"
+
+[tool.comfy]
+PublisherId = "dnnagy"
+DisplayName = "Comfy Random Toolpack"
