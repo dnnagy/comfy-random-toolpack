@@ -113,6 +113,16 @@ Typical LTX-Video 2.3 wiring:
                                                           └─────────────────────────────┘
 ```
 
+### Parse Int / Parse Float
+
+Parse a STRING into a numeric value. On parse failure the supplied `default`
+is returned, and an `ok` BOOLEAN reports whether parsing succeeded.
+
+- **Parse Int** — accepts decimal, hex (`0x...`), octal (`0o...`), binary
+  (`0b...`), and float-like strings (`"3.0"`, `"1e3"`, truncated). Outputs
+  `(value: INT, ok: BOOLEAN)`.
+- **Parse Float** — outputs `(value: FLOAT, ok: BOOLEAN)`.
+
 ## Installation
 
 Clone this repository into your ComfyUI `custom_nodes` directory:
