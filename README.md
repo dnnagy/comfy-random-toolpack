@@ -123,6 +123,27 @@ is returned, and an `ok` BOOLEAN reports whether parsing succeeded.
   `(value: INT, ok: BOOLEAN)`.
 - **Parse Float** — outputs `(value: FLOAT, ok: BOOLEAN)`.
 
+### Lazy Load Image / Lazy Load Audio
+
+Fault-tolerant alternatives to the built-in `Load Image` / `Load Audio` nodes.
+The stock loaders define a `VALIDATE_INPUTS` check that aborts the whole graph
+when the referenced file is missing — which is exactly what happens when a
+workflow is ported to a machine that does not have the input file.
+
+These versions instead:
+
+- override `VALIDATE_INPUTS` to always pass (this also bypasses the implicit
+  "value must be one of the combo options" check, so a stale filename does not
+  abort the run),
+- return `None` for the data output(s) when the file cannot be loaded,
+- expose a `loaded` BOOLEAN output for downstream branching.
+
+- **Lazy Load Image** — outputs `image` (IMAGE), `mask` (MASK), `loaded` (BOOLEAN).
+- **Lazy Load Audio** — outputs `audio` (AUDIO), `loaded` (BOOLEAN).
+
+Pair `loaded` with `Lazy Latent Fallback` to skip an expensive encode branch
+when the source is absent.
+
 ## Installation
 
 Clone this repository into your ComfyUI `custom_nodes` directory:
