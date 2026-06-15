@@ -140,6 +140,7 @@ These versions instead:
 
 - **Lazy Load Image** — outputs `image` (IMAGE), `mask` (MASK), `loaded` (BOOLEAN).
 - **Lazy Load Audio** — outputs `audio` (AUDIO), `loaded` (BOOLEAN).
+- **Lazy Load Video** — outputs `video` (VIDEO), `loaded` (BOOLEAN).
 
 Pair `loaded` with `Lazy Latent Fallback` to skip an expensive encode branch
 when the source is absent.

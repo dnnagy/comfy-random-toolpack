@@ -198,12 +198,72 @@ class LazyLoadAudio:
         return True
 
 
+class LazyLoadVideo:
+    """Load a video from the input directory, returning None if it is missing.
+
+    Drop-in alternative to the built-in ``Load Video`` node that never aborts
+    the graph when the file is absent. Outputs ``video`` (VIDEO) and ``loaded``
+    (BOOLEAN).
+    """
+
+    CATEGORY = "video"
+    FUNCTION = "load_video"
+
+    RETURN_TYPES = ("VIDEO", "BOOLEAN")
+    RETURN_NAMES = ("video", "loaded")
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        input_dir = folder_paths.get_input_directory()
+        try:
+            files = [
+                f
+                for f in os.listdir(input_dir)
+                if os.path.isfile(os.path.join(input_dir, f))
+            ]
+            files = folder_paths.filter_files_content_types(files, ["video"])
+        except Exception:
+            files = []
+        return {
+            "required": {
+                "file": (sorted(files), {"video_upload": True}),
+            },
+        }
+
+    def load_video(self, file):
+        path = _resolve_path(file)
+        if path is None:
+            return (None, False)
+
+        try:
+            from comfy_api.latest import InputImpl
+
+            return (InputImpl.VideoFromFile(path), True)
+        except Exception:
+            return (None, False)
+
+    @classmethod
+    def IS_CHANGED(cls, file):
+        path = _resolve_path(file)
+        if path is None:
+            return "missing:{}".format(file)
+        # Match the built-in node: use mtime to avoid rehashing large files.
+        return os.path.getmtime(path)
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, file):
+        # Always pass; missing files are handled gracefully in load_video.
+        return True
+
+
 NODE_CLASS_MAPPINGS = {
     "LazyLoadImage": LazyLoadImage,
     "LazyLoadAudio": LazyLoadAudio,
+    "LazyLoadVideo": LazyLoadVideo,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "LazyLoadImage": "Lazy Load Image",
     "LazyLoadAudio": "Lazy Load Audio",
+    "LazyLoadVideo": "Lazy Load Video",
 }
