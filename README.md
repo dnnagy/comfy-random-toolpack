@@ -142,6 +142,10 @@ These versions instead:
 - **Lazy Load Audio** — outputs `audio` (AUDIO), `loaded` (BOOLEAN).
 - **Lazy Load Video** — outputs `video` (VIDEO), `loaded` (BOOLEAN).
 
+Note: `Lazy Load Audio` currently uses a standard dropdown selector (no upload
+widget) to avoid a frontend `uploadAudio.ts` crash path seen with custom
+legacy-node `audio_upload` metadata.
+
 Pair `loaded` with `Lazy Latent Fallback` to skip an expensive encode branch
 when the source is absent.
 

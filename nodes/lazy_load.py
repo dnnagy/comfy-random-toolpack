@@ -164,7 +164,7 @@ class LazyLoadAudio:
             files = []
         return {
             "required": {
-                "audio": (sorted(files), {"audio_upload": True}),
+                "audio": (sorted(files),),
             },
         }
 
