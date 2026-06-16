@@ -231,6 +231,92 @@ class CRTP_CropImageByPadding:
         return (image[:, pad_top:bottom, pad_left:right, :].contiguous(),)
 
 
+class CRTP_PadImageByPadding:
+    """Pad an IMAGE using explicit pad amounts.
+
+    Useful with :class:`CRTP_ComputePaddingToDivisible` when you want to compute
+    padding in one node and apply it in another.
+    """
+
+    CATEGORY = "image/transform"
+    FUNCTION = "pad"
+
+    RETURN_TYPES = ("IMAGE", "INT", "INT", "INT", "INT", "PADDING_TUPLE")
+    RETURN_NAMES = ("image", "pad_left", "pad_right", "pad_top", "pad_bottom", "padding")
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "pad_left": ("INT", {"default": 0, "min": 0, "max": 8192}),
+                "pad_right": ("INT", {"default": 0, "min": 0, "max": 8192}),
+                "pad_top": ("INT", {"default": 0, "min": 0, "max": 8192}),
+                "pad_bottom": ("INT", {"default": 0, "min": 0, "max": 8192}),
+                "pad_color": (
+                    "STRING",
+                    {
+                        "default": "#000000",
+                        "tooltip": "Hex color for the padding, e.g. #000000.",
+                    },
+                ),
+            },
+            "optional": {
+                "padding": (
+                    "PADDING_TUPLE",
+                    {
+                        "tooltip": (
+                            "Optional bundled padding (from CRTP_ComputePaddingToDivisible "
+                            "or CRTP_PackPaddingTuple). When connected, overrides the "
+                            "individual pad_* inputs and pad_color."
+                        ),
+                    },
+                ),
+            },
+        }
+
+    def pad(self, image, pad_left, pad_right, pad_top, pad_bottom, pad_color, padding=None):
+        if padding is not None:
+            pad_left = int(padding.get("pad_left", pad_left))
+            pad_right = int(padding.get("pad_right", pad_right))
+            pad_top = int(padding.get("pad_top", pad_top))
+            pad_bottom = int(padding.get("pad_bottom", pad_bottom))
+            pad_color = str(padding.get("pad_color", pad_color))
+
+        if image.ndim != 4:
+            raise ValueError(
+                f"PadImageByPadding expects [B,H,W,C] tensor, got shape {tuple(image.shape)}"
+            )
+
+        b, h, w, c = image.shape
+        new_h = h + int(pad_top) + int(pad_bottom)
+        new_w = w + int(pad_left) + int(pad_right)
+
+        if new_h <= 0 or new_w <= 0:
+            raise ValueError(
+                "PadImageByPadding: resulting image size must be positive, "
+                f"got {new_w}x{new_h}."
+            )
+
+        if pad_top == 0 and pad_bottom == 0 and pad_left == 0 and pad_right == 0:
+            out_padding = _make_padding_tuple(0, 0, 0, 0, pad_color)
+            return (image, 0, 0, 0, 0, out_padding)
+
+        r, g, b_col = _parse_hex_color(pad_color)
+        if c >= 3:
+            color = [r, g, b_col] + [0.0] * (c - 3)
+        else:
+            color = [r] * c
+        color_t = torch.tensor(color, dtype=image.dtype, device=image.device)
+
+        out = torch.empty((b, new_h, new_w, c), dtype=image.dtype, device=image.device)
+        out[...] = color_t
+        out[:, pad_top : pad_top + h, pad_left : pad_left + w, :] = image
+
+        out_padding = _make_padding_tuple(pad_left, pad_right, pad_top, pad_bottom, pad_color)
+        return (out, pad_left, pad_right, pad_top, pad_bottom, out_padding)
+
+
 class CRTP_ComputePaddingToDivisible:
     """Compute pad amounts to make ``width`` and ``height`` divisible by ``divisor``.
 
@@ -366,6 +452,7 @@ class CRTP_UnpackPaddingTuple:
 NODE_CLASS_MAPPINGS = {
     "CRTP_PadImageToDivisible": CRTP_PadImageToDivisible,
     "CRTP_CropImageByPadding": CRTP_CropImageByPadding,
+    "CRTP_PadImageByPadding": CRTP_PadImageByPadding,
     "CRTP_ComputePaddingToDivisible": CRTP_ComputePaddingToDivisible,
     "CRTP_PackPaddingTuple": CRTP_PackPaddingTuple,
     "CRTP_UnpackPaddingTuple": CRTP_UnpackPaddingTuple,
@@ -374,6 +461,7 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "CRTP_PadImageToDivisible": "CRTP Pad Image To Divisible",
     "CRTP_CropImageByPadding": "CRTP Crop Image By Padding",
+    "CRTP_PadImageByPadding": "CRTP Pad Image By Padding",
     "CRTP_ComputePaddingToDivisible": "CRTP Compute Padding To Divisible",
     "CRTP_PackPaddingTuple": "CRTP Pack Padding Tuple",
     "CRTP_UnpackPaddingTuple": "CRTP Unpack Padding Tuple",

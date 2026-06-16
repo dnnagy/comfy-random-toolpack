@@ -74,6 +74,30 @@ Output:
 
 - `image` (IMAGE)
 
+### CRTP_PadImageByPadding
+
+Pad an `IMAGE` using provided pad values (instead of computing from a divisor).
+This pairs naturally with `CRTP_ComputePaddingToDivisible`:
+
+```text
+width/height ──► CRTP_ComputePaddingToDivisible ──► padding (PADDING_TUPLE)
+image        ─────────────────────────────────────► CRTP_PadImageByPadding
+```
+
+Inputs:
+
+- `image` (IMAGE)
+- `pad_left`, `pad_right`, `pad_top`, `pad_bottom` (INT)
+- `pad_color` (STRING)
+- `padding` (PADDING_TUPLE, optional): when connected, overrides individual
+  pad values and color.
+
+Outputs:
+
+- `image` (IMAGE)
+- `pad_left`, `pad_right`, `pad_top`, `pad_bottom` (INT)
+- `padding` (PADDING_TUPLE)
+
 ### CRTP_ComputePaddingToDivisible
 
 Same math as `CRTP_PadImageToDivisible`, but works on integers only — no image
