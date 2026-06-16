@@ -21,6 +21,7 @@ branches when ``loaded`` is ``False``.
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 
 import numpy as np
@@ -102,19 +103,70 @@ def _load_image_impl(image):
         return (None, None, False)
 
 
+def _f32_pcm(wav: torch.Tensor) -> torch.Tensor:
+    if wav.dtype.is_floating_point:
+        return wav
+    if wav.dtype == torch.int16:
+        return wav.float() / (2 ** 15)
+    if wav.dtype == torch.int32:
+        return wav.float() / (2 ** 31)
+    raise ValueError(f"Unsupported wav dtype: {wav.dtype}")
+
+
+def _load_audio_av(path: str) -> tuple[torch.Tensor, int]:
+    """Match the built-in LoadAudio implementation (PyAV)."""
+    import av
+
+    with av.open(path) as af:
+        if not af.streams.audio:
+            raise ValueError("No audio stream found in the file.")
+
+        stream = af.streams.audio[0]
+        sr = stream.codec_context.sample_rate
+        n_channels = stream.channels
+
+        frames = []
+        for frame in af.decode(streams=stream.index):
+            buf = torch.from_numpy(frame.to_ndarray())
+            if buf.shape[0] != n_channels:
+                buf = buf.view(-1, n_channels).t()
+            frames.append(buf)
+
+        if not frames:
+            raise ValueError("No audio frames decoded.")
+
+        wav = torch.cat(frames, dim=1)
+        return _f32_pcm(wav), sr
+
+
 def _load_audio_impl(audio):
     path = _resolve_path(audio)
     if path is None:
+        logging.warning("CRTP LazyLoadAudio: file not found: %r", audio)
         return (None, False)
 
     try:
-        import torchaudio
+        waveform, sample_rate = _load_audio_av(path)
+    except Exception as e_av:
+        logging.warning(
+            "CRTP LazyLoadAudio: PyAV failed for %s (%s); falling back to torchaudio.",
+            path,
+            e_av,
+        )
+        try:
+            import torchaudio
 
-        waveform, sample_rate = torchaudio.load(path)
-        result = {"waveform": waveform.unsqueeze(0), "sample_rate": sample_rate}
-        return (result, True)
-    except Exception:
-        return (None, False)
+            waveform, sample_rate = torchaudio.load(path)
+        except Exception as e_ta:
+            logging.error(
+                "CRTP LazyLoadAudio: both PyAV and torchaudio failed for %s: %s",
+                path,
+                e_ta,
+            )
+            return (None, False)
+
+    result = {"waveform": waveform.unsqueeze(0), "sample_rate": int(sample_rate)}
+    return (result, True)
 
 
 def _load_video_impl(file):
