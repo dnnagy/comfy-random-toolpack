@@ -143,12 +143,139 @@ class CRTP_PadLatentToSize:
         return (out, pad_amount, int(out_samples.shape[dim]))
 
 
+class CRTP_FitLatentToSize:
+    """Pad or crop a LATENT on a chosen dimension to match target_size.
+
+    If the current size on ``dimension`` is smaller than ``target_size``, the
+    tensor is padded with ``value``. If it is larger, it is cropped. ``align``
+    controls which side the operation happens on.
+    """
+
+    CATEGORY = "latent/transform"
+    FUNCTION = "fit"
+
+    RETURN_TYPES = ("LATENT", "STRING", "INT", "INT")
+    RETURN_NAMES = ("latent", "operation", "delta", "new_size")
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "latent": ("LATENT",),
+                "dimension": (
+                    "INT",
+                    {
+                        "default": 3,
+                        "min": 0,
+                        "max": 7,
+                        "tooltip": "Dimension index in latent samples.",
+                    },
+                ),
+                "target_size": ("INT", {"default": 32, "min": 0, "max": 16384}),
+                "value": (
+                    "FLOAT",
+                    {
+                        "default": 0.0,
+                        "min": -1000.0,
+                        "max": 1000.0,
+                        "step": 0.01,
+                        "tooltip": "Fill value used when padding.",
+                    },
+                ),
+                "align": (
+                    ("end", "start", "center"),
+                    {
+                        "default": "end",
+                        "tooltip": (
+                            "end: pad/crop the end of the dimension. "
+                            "start: pad/crop the start. "
+                            "center: split symmetrically."
+                        ),
+                    },
+                ),
+            },
+        }
+
+    @staticmethod
+    def _split(amount: int, align: str) -> tuple[int, int]:
+        if amount <= 0:
+            return 0, 0
+        if align == "end":
+            return 0, amount
+        if align == "start":
+            return amount, 0
+        if align == "center":
+            before = amount // 2
+            after = amount - before
+            return before, after
+        raise ValueError(f"Unknown align: {align!r}")
+
+    def fit(self, latent, dimension, target_size, value, align):
+        if not isinstance(latent, dict) or "samples" not in latent:
+            raise ValueError("CRTP_FitLatentToSize: LATENT must contain 'samples'.")
+
+        samples = latent["samples"]
+        if not isinstance(samples, torch.Tensor):
+            raise ValueError("CRTP_FitLatentToSize: latent['samples'] must be a torch.Tensor.")
+
+        dim = int(dimension)
+        if dim < 0 or dim >= samples.ndim:
+            raise ValueError(
+                f"CRTP_FitLatentToSize: dimension {dim} out of range for samples shape {tuple(samples.shape)}."
+            )
+
+        current = int(samples.shape[dim])
+        target = int(target_size)
+
+        if target == current:
+            return (latent, "noop", 0, current)
+
+        if target > current:
+            amount = target - current
+            before, after = self._split(amount, align)
+
+            new_shape = list(samples.shape)
+            parts = [samples]
+
+            if before > 0:
+                pad_shape = list(samples.shape)
+                pad_shape[dim] = before
+                parts.insert(
+                    0,
+                    torch.full(pad_shape, float(value), dtype=samples.dtype, device=samples.device),
+                )
+            if after > 0:
+                pad_shape = list(samples.shape)
+                pad_shape[dim] = after
+                parts.append(
+                    torch.full(pad_shape, float(value), dtype=samples.dtype, device=samples.device),
+                )
+
+            out_samples = torch.cat(parts, dim=dim)
+            op = "pad"
+            delta = amount
+        else:
+            amount = current - target
+            before, after = self._split(amount, align)
+            start = before
+            length = current - before - after
+            out_samples = samples.narrow(dim, start, length).contiguous()
+            op = "crop"
+            delta = amount
+
+        out = dict(latent)
+        out["samples"] = out_samples
+        return (out, op, delta, int(out_samples.shape[dim]))
+
+
 NODE_CLASS_MAPPINGS = {
     "CRTP_GetTensorShape": CRTP_GetTensorShape,
     "CRTP_PadLatentToSize": CRTP_PadLatentToSize,
+    "CRTP_FitLatentToSize": CRTP_FitLatentToSize,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "CRTP_GetTensorShape": "CRTP Get Tensor Shape",
     "CRTP_PadLatentToSize": "CRTP Pad Latent To Size",
+    "CRTP_FitLatentToSize": "CRTP Fit Latent To Size",
 }
