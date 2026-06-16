@@ -147,6 +147,34 @@ is returned, and an `ok` BOOLEAN reports whether parsing succeeded.
   `(value: INT, ok: BOOLEAN)`.
 - **CRTP_ParseFloat** — outputs `(value: FLOAT, ok: BOOLEAN)`.
 
+### CRTP_GetTensorShape
+
+Generic tensor shape inspector.
+
+- Input: `tensor` (accepts any connected value; for `LATENT` it reads
+  `samples`, for `AUDIO` it reads `waveform`).
+- Outputs: `num_dims`, `dim0..dim7`, `shape` (STRING).
+
+Useful for quickly checking shapes while wiring complex workflows.
+
+### CRTP_PadLatentToSize
+
+Pad a `LATENT` tensor to a target size on a selected dimension using a fill
+value (default `0.0`).
+
+- Inputs:
+  - `latent` (LATENT)
+  - `dimension` (INT): index in latent `samples` shape `[B, C, H, W]`
+  - `target_size` (INT)
+  - `value` (FLOAT, default `0.0`)
+- Outputs:
+  - `latent` (LATENT)
+  - `padded_by` (INT)
+  - `new_size` (INT)
+
+If `target_size` is smaller than or equal to the current size, it returns the
+latent unchanged with `padded_by = 0`.
+
 ### CRTP Audio Nodes
 
 Merged from `comfy-audio-nodes` into this pack:
