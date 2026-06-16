@@ -8,7 +8,7 @@ Reference: https://docs.comfy.org/custom-nodes/backend/lazy_evaluation
 """
 
 
-class LazyLatentFallback:
+class CRTP_LazyLatentFallback:
     """Pick between two LATENT inputs without evaluating both branches.
 
     Only the LATENT input selected by ``use_real_latent`` is evaluated, so the
@@ -62,9 +62,9 @@ class LazyLatentFallback:
 
 
 NODE_CLASS_MAPPINGS = {
-    "LazyLatentFallback": LazyLatentFallback,
+    "CRTP_LazyLatentFallback": CRTP_LazyLatentFallback,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "LazyLatentFallback": "Lazy Latent Fallback",
+    "CRTP_LazyLatentFallback": "CRTP Lazy Latent Fallback",
 }

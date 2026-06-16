@@ -4,7 +4,7 @@ A grab-bag of small, useful ComfyUI custom nodes.
 
 ## Nodes
 
-### Lazy Latent Fallback
+### CRTP_LazyLatentFallback
 
 Pick between two `LATENT` inputs *without* evaluating both upstream branches.
 Built on top of ComfyUI's
@@ -26,7 +26,7 @@ Typical pattern:
 
 ```text
              ┌─ valid source → VAE Encode ─────────┐
-has_source ──┤                                     ├─ Lazy Latent Fallback → LATENT
+has_source ──┤                                     ├─ CRTP_LazyLatentFallback → LATENT
              └─ Empty Latent ──────────────────────┘
 ```
 
@@ -34,7 +34,7 @@ Because `real_latent` is lazy, the VAE encode branch is only executed when
 `use_real_latent` is `True`, and the empty latent branch is only executed when
 it is `False`.
 
-### Pad Image To Divisible
+### CRTP_PadImageToDivisible
 
 Pad an `IMAGE` (or video frame batch — same `[B, H, W, C]` layout) so both
 width and height are multiples of `divisor`. Useful for models like LTX-Video
@@ -58,9 +58,9 @@ Outputs:
 - `pad_left`, `pad_right`, `pad_top`, `pad_bottom` (INT)
 - `padding` (PADDING_TUPLE): the four pad amounts plus `pad_color` bundled on a single link.
 
-### Crop Image By Padding
+### CRTP_CropImageByPadding
 
-Reverse of `Pad Image To Divisible`. Removes the supplied pad amounts from
+Reverse of `CRTP_PadImageToDivisible`. Removes the supplied pad amounts from
 each side. Wire either the four `pad_*` outputs or the bundled `padding`
 output from the pad node into this one after running the model.
 
@@ -74,9 +74,9 @@ Output:
 
 - `image` (IMAGE)
 
-### Compute Padding To Divisible
+### CRTP_ComputePaddingToDivisible
 
-Same math as `Pad Image To Divisible`, but works on integers only — no image
+Same math as `CRTP_PadImageToDivisible`, but works on integers only — no image
 is touched. Useful for pre-computing target dimensions for empty latents or
 other resolution-aware nodes.
 
@@ -94,36 +94,36 @@ Outputs:
 - `padded_width`, `padded_height` (INT)
 - `padding` (PADDING_TUPLE)
 
-### Pack / Unpack Padding Tuple
+### CRTP_PackPaddingTuple / CRTP_UnpackPaddingTuple
 
 `PADDING_TUPLE` is a small custom socket type carrying
 `pad_left`, `pad_right`, `pad_top`, `pad_bottom`, and `pad_color` together.
 
-- **Pack Padding Tuple** — inputs: four INTs + `pad_color` STRING; output: `padding` (PADDING_TUPLE).
-- **Unpack Padding Tuple** — input: `padding` (PADDING_TUPLE); outputs: four INTs + `pad_color` STRING.
+- **CRTP_PackPaddingTuple** — inputs: four INTs + `pad_color` STRING; output: `padding` (PADDING_TUPLE).
+- **CRTP_UnpackPaddingTuple** — input: `padding` (PADDING_TUPLE); outputs: four INTs + `pad_color` STRING.
 
 Typical LTX-Video 2.3 wiring:
 
 ```text
-1280x720 image ──► Pad Image To Divisible (divisor=32, symmetric)
+1280x720 image ──► CRTP_PadImageToDivisible (divisor=32, symmetric)
                        │     pad_left/right/top/bottom ──┐
                        ▼                                  │
-                 1280x736 image ──► LTX 2.3 ──► output ───┼─► Crop Image By Padding ──► 1280x720
+                 1280x736 image ──► LTX 2.3 ──► output ───┼─► CRTP_CropImageByPadding ──► 1280x720
                                                           │
                                                           └─────────────────────────────┘
 ```
 
-### Parse Int / Parse Float
+### CRTP_ParseInt / CRTP_ParseFloat
 
 Parse a STRING into a numeric value. On parse failure the supplied `default`
 is returned, and an `ok` BOOLEAN reports whether parsing succeeded.
 
-- **Parse Int** — accepts decimal, hex (`0x...`), octal (`0o...`), binary
+- **CRTP_ParseInt** — accepts decimal, hex (`0x...`), octal (`0o...`), binary
   (`0b...`), and float-like strings (`"3.0"`, `"1e3"`, truncated). Outputs
   `(value: INT, ok: BOOLEAN)`.
-- **Parse Float** — outputs `(value: FLOAT, ok: BOOLEAN)`.
+- **CRTP_ParseFloat** — outputs `(value: FLOAT, ok: BOOLEAN)`.
 
-### Lazy Load Image / Lazy Load Audio
+### CRTP Lazy Load Nodes
 
 Fault-tolerant alternatives to the built-in `Load Image` / `Load Audio` nodes.
 The stock loaders define a `VALIDATE_INPUTS` check that aborts the whole graph
@@ -138,15 +138,14 @@ These versions instead:
 - return `None` for the data output(s) when the file cannot be loaded,
 - expose a `loaded` BOOLEAN output for downstream branching.
 
-- **Lazy Load Image** — outputs `image` (IMAGE), `mask` (MASK), `loaded` (BOOLEAN).
-- **Lazy Load Audio** — outputs `audio` (AUDIO), `loaded` (BOOLEAN).
-- **Lazy Load Video** — outputs `video` (VIDEO), `loaded` (BOOLEAN).
+- **CRTP_LazyLoadImageUpload** and **CRTP_LazyLoadImageSelect** — outputs `image` (IMAGE), `mask` (MASK), `loaded` (BOOLEAN).
+- **CRTP_LazyLoadAudioUpload** and **CRTP_LazyLoadAudioSelect** — outputs `audio` (AUDIO), `loaded` (BOOLEAN).
+- **CRTP_LazyLoadVideoUpload** and **CRTP_LazyLoadVideoSelect** — outputs `video` (VIDEO), `loaded` (BOOLEAN).
 
-Note: `Lazy Load Audio` currently uses a standard dropdown selector (no upload
-widget) to avoid a frontend `uploadAudio.ts` crash path seen with custom
-legacy-node `audio_upload` metadata.
+Note: if your frontend still has the `uploadAudio.ts` bug on legacy nodes,
+prefer `CRTP_LazyLoadAudioSelect` (plain selector) over the upload variant.
 
-Pair `loaded` with `Lazy Latent Fallback` to skip an expensive encode branch
+Pair `loaded` with `CRTP_LazyLatentFallback` to skip an expensive encode branch
 when the source is absent.
 
 ## Installation
@@ -158,8 +157,7 @@ cd ComfyUI/custom_nodes
 git clone https://github.com/dnnagy/comfy-random-toolpack.git
 ```
 
-Restart ComfyUI, then search the node menu under `latent/conditional` for
-`Lazy Latent Fallback`.
+All nodes in this pack use the `CRTP_` prefix for namespacing.
 
 ## License
 

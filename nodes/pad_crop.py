@@ -72,7 +72,7 @@ def _split_pad(total: int, mode: str, side: str) -> tuple[int, int]:
     raise ValueError(f"Unknown padding mode: {mode!r}")
 
 
-class PadImageToDivisible:
+class CRTP_PadImageToDivisible:
     """Pad an IMAGE so its width and height are multiples of ``divisor``.
 
     Works on image and video frame batches (tensor shape ``[B, H, W, C]``).
@@ -170,7 +170,7 @@ class PadImageToDivisible:
         return (out, pad_left, pad_right, pad_top, pad_bottom, padding)
 
 
-class CropImageByPadding:
+class CRTP_CropImageByPadding:
     """Crop an IMAGE by removing the given pad amounts from each side.
 
     Pairs with :class:`PadImageToDivisible` to restore the original spatial
@@ -231,7 +231,7 @@ class CropImageByPadding:
         return (image[:, pad_top:bottom, pad_left:right, :].contiguous(),)
 
 
-class ComputePaddingToDivisible:
+class CRTP_ComputePaddingToDivisible:
     """Compute pad amounts to make ``width`` and ``height`` divisible by ``divisor``.
 
     Same math as :class:`PadImageToDivisible`, but operates purely on integers
@@ -299,7 +299,7 @@ class ComputePaddingToDivisible:
         return (pad_left, pad_right, pad_top, pad_bottom, new_w, new_h, padding)
 
 
-class PackPaddingTuple:
+class CRTP_PackPaddingTuple:
     """Bundle four pad amounts and a pad color into a single PADDING_TUPLE."""
 
     CATEGORY = "image/transform"
@@ -332,7 +332,7 @@ class PackPaddingTuple:
         )
 
 
-class UnpackPaddingTuple:
+class CRTP_UnpackPaddingTuple:
     """Split a PADDING_TUPLE into its four pad amounts and pad color."""
 
     CATEGORY = "image/transform"
@@ -364,17 +364,17 @@ class UnpackPaddingTuple:
 
 
 NODE_CLASS_MAPPINGS = {
-    "PadImageToDivisible": PadImageToDivisible,
-    "CropImageByPadding": CropImageByPadding,
-    "ComputePaddingToDivisible": ComputePaddingToDivisible,
-    "PackPaddingTuple": PackPaddingTuple,
-    "UnpackPaddingTuple": UnpackPaddingTuple,
+    "CRTP_PadImageToDivisible": CRTP_PadImageToDivisible,
+    "CRTP_CropImageByPadding": CRTP_CropImageByPadding,
+    "CRTP_ComputePaddingToDivisible": CRTP_ComputePaddingToDivisible,
+    "CRTP_PackPaddingTuple": CRTP_PackPaddingTuple,
+    "CRTP_UnpackPaddingTuple": CRTP_UnpackPaddingTuple,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "PadImageToDivisible": "Pad Image To Divisible",
-    "CropImageByPadding": "Crop Image By Padding",
-    "ComputePaddingToDivisible": "Compute Padding To Divisible",
-    "PackPaddingTuple": "Pack Padding Tuple",
-    "UnpackPaddingTuple": "Unpack Padding Tuple",
+    "CRTP_PadImageToDivisible": "CRTP Pad Image To Divisible",
+    "CRTP_CropImageByPadding": "CRTP Crop Image By Padding",
+    "CRTP_ComputePaddingToDivisible": "CRTP Compute Padding To Divisible",
+    "CRTP_PackPaddingTuple": "CRTP Pack Padding Tuple",
+    "CRTP_UnpackPaddingTuple": "CRTP Unpack Padding Tuple",
 }

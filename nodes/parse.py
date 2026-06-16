@@ -7,7 +7,7 @@ produces a string that downstream numeric inputs need.
 from __future__ import annotations
 
 
-class ParseInt:
+class CRTP_ParseInt:
     """Parse a STRING into an INT.
 
     Supports decimal, hex (``0x``), octal (``0o``), and binary (``0b``)
@@ -48,7 +48,7 @@ class ParseInt:
             return (int(default), False)
 
 
-class ParseFloat:
+class CRTP_ParseFloat:
     """Parse a STRING into a FLOAT. On failure, ``default`` is returned."""
 
     CATEGORY = "utils/parse"
@@ -81,11 +81,11 @@ class ParseFloat:
 
 
 NODE_CLASS_MAPPINGS = {
-    "ParseInt": ParseInt,
-    "ParseFloat": ParseFloat,
+    "CRTP_ParseInt": CRTP_ParseInt,
+    "CRTP_ParseFloat": CRTP_ParseFloat,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "ParseInt": "Parse Int",
-    "ParseFloat": "Parse Float",
+    "CRTP_ParseInt": "CRTP Parse Int",
+    "CRTP_ParseFloat": "CRTP Parse Float",
 }
