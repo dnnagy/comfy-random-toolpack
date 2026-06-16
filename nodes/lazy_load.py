@@ -130,13 +130,7 @@ def _load_video_impl(file):
         return (None, False)
 
 
-class _CRTP_LazyCommon:
-    @classmethod
-    def VALIDATE_INPUTS(cls, *_args):
-        return True
-
-
-class CRTP_LazyLoadImageUpload(_CRTP_LazyCommon):
+class CRTP_LazyLoadImageUpload:
     CATEGORY = "image"
     FUNCTION = "load_image"
 
@@ -164,8 +158,12 @@ class CRTP_LazyLoadImageUpload(_CRTP_LazyCommon):
             m.update(f.read())
         return m.digest().hex()
 
+    @classmethod
+    def VALIDATE_INPUTS(cls, image):
+        return True
 
-class CRTP_LazyLoadImageSelect(_CRTP_LazyCommon):
+
+class CRTP_LazyLoadImageSelect:
     CATEGORY = "image"
     FUNCTION = "load_image"
 
@@ -193,8 +191,12 @@ class CRTP_LazyLoadImageSelect(_CRTP_LazyCommon):
             m.update(f.read())
         return m.digest().hex()
 
+    @classmethod
+    def VALIDATE_INPUTS(cls, image):
+        return True
 
-class CRTP_LazyLoadAudioUpload(_CRTP_LazyCommon):
+
+class CRTP_LazyLoadAudioUpload:
     """Load audio from the input directory, returning None if it is missing.
 
     Drop-in alternative to the built-in ``Load Audio`` node that never aborts
@@ -229,7 +231,11 @@ class CRTP_LazyLoadAudioUpload(_CRTP_LazyCommon):
             m.update(f.read())
         return m.digest().hex()
 
-class CRTP_LazyLoadAudioSelect(_CRTP_LazyCommon):
+    @classmethod
+    def VALIDATE_INPUTS(cls, audio):
+        return True
+
+class CRTP_LazyLoadAudioSelect:
     CATEGORY = "audio"
     FUNCTION = "load_audio"
 
@@ -257,8 +263,12 @@ class CRTP_LazyLoadAudioSelect(_CRTP_LazyCommon):
             m.update(f.read())
         return m.digest().hex()
 
+    @classmethod
+    def VALIDATE_INPUTS(cls, audio):
+        return True
 
-class CRTP_LazyLoadVideoUpload(_CRTP_LazyCommon):
+
+class CRTP_LazyLoadVideoUpload:
     """Load a video from the input directory, returning None if it is missing.
 
     Drop-in alternative to the built-in ``Load Video`` node that never aborts
@@ -291,7 +301,11 @@ class CRTP_LazyLoadVideoUpload(_CRTP_LazyCommon):
         # Match the built-in node: use mtime to avoid rehashing large files.
         return os.path.getmtime(path)
 
-class CRTP_LazyLoadVideoSelect(_CRTP_LazyCommon):
+    @classmethod
+    def VALIDATE_INPUTS(cls, file):
+        return True
+
+class CRTP_LazyLoadVideoSelect:
     CATEGORY = "video"
     FUNCTION = "load_video"
 
@@ -315,6 +329,10 @@ class CRTP_LazyLoadVideoSelect(_CRTP_LazyCommon):
         if path is None:
             return "missing:{}".format(file)
         return os.path.getmtime(path)
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, file):
+        return True
 
 
 NODE_CLASS_MAPPINGS = {
