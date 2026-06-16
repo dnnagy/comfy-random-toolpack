@@ -123,6 +123,19 @@ is returned, and an `ok` BOOLEAN reports whether parsing succeeded.
   `(value: INT, ok: BOOLEAN)`.
 - **CRTP_ParseFloat** — outputs `(value: FLOAT, ok: BOOLEAN)`.
 
+### CRTP Audio Nodes
+
+Merged from `comfy-audio-nodes` into this pack:
+
+- **CRTP_NormalizeAudio** — normalize `AUDIO` by `peak` or `rms` to `target_dB`.
+- **CRTP_AudioProperties** — outputs `samples`, `duration`, `sample_rate`,
+  `num_channels`, `isNone` (`audio` input is optional and returns `-1` +
+  `isNone=True` when missing).
+- **CRTP_SplitAudioChannels** — splits `AUDIO` into `left` and `right` mono
+  outputs (mono input is duplicated).
+- **CRTP_MergeAudioChannels** — merges `left` + `right` audio into stereo,
+  with sample-rate validation and zero-padding for mismatched lengths.
+
 ### CRTP Lazy Load Nodes
 
 Fault-tolerant alternatives to the built-in `Load Image` / `Load Audio` nodes.
