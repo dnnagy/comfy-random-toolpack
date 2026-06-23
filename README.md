@@ -175,6 +175,38 @@ value (default `0.0`).
 If `target_size` is smaller than or equal to the current size, it returns the
 latent unchanged with `padded_by = 0`.
 
+### CRTP Ideogram 4 Nodes (experimental)
+
+Ideogram 4's text encoder is a Qwen3-VL-8B model, whose tokenizer can accept
+images via `clip.tokenize(prompt, images=[...])` (same mechanism as the
+built-in Qwen image-edit nodes). These nodes wire that path into standard
+`CONDITIONING` so you can use an image as a prompt and chain prompts together.
+
+> **Experimental:** this only sets up the encoder plumbing. Whether Ideogram 4
+> meaningfully uses the image signal depends on how the model was trained.
+
+- **CRTP_Ideogram4ImagePrompt** — encode an `image` (+ optional `text`) into
+  `CONDITIONING`. Optional `conditioning` input appends the result onto an
+  existing conditioning (sequence concat). The image is passed at **native
+  resolution** by default — the Qwen-VL processor smart-resizes internally
+  (clamped to ~12.8 MP) and snaps to the patch grid. Use `max_megapixels` only
+  to cap resolution for VRAM/compute (0 = native; never upscales).
+- **CRTP_Ideogram4TextPrompt** — encode `text` into `CONDITIONING`, with the
+  same optional `conditioning` append input.
+- **CRTP_ConditioningAppend** — generic helper that appends
+  `conditioning_from` onto `conditioning_to` (same as `ConditioningConcat`).
+
+Because each prompt node has an optional `conditioning` passthrough, you can
+build chains such as:
+
+```text
+CLIP text prompt -> Image prompt -> Image prompt 2 -> Sampling
+Image prompt     -> CLIP text prompt -> Image prompt 2 -> Sampling
+```
+
+All prompts in a chain must come from the **same Ideogram 4 CLIP** (matching
+feature dimension) to be appended.
+
 ### CRTP Audio Nodes
 
 Merged from `comfy-audio-nodes` into this pack:
