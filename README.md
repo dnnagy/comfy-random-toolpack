@@ -147,6 +147,29 @@ is returned, and an `ok` BOOLEAN reports whether parsing succeeded.
   `(value: INT, ok: BOOLEAN)`.
 - **CRTP_ParseFloat** — outputs `(value: FLOAT, ok: BOOLEAN)`.
 
+### CRTP JSON Nodes
+
+Manipulate JSON text/data. These introduce a lightweight `JSON` socket type
+that carries a parsed object (dict/list/scalar) between nodes; `parse` and
+`stringify` bridge to/from `STRING`, while `minify`/`prettify` are plain
+string-to-string conveniences. Mutating nodes operate on a deep copy, so
+cached upstream outputs are never modified in place.
+
+- **CRTP_JSONParse** — `STRING -> (JSON, ok: BOOLEAN, error: STRING)`.
+- **CRTP_JSONStringify** — `JSON -> STRING`. `indent=0` is compact; options for
+  `sort_keys` and `ensure_ascii`.
+- **CRTP_JSONMinify** — `STRING -> (STRING, ok)`; removes insignificant
+  whitespace.
+- **CRTP_JSONPrettify** — `STRING -> (STRING, ok)`; re-indents (default `2`).
+- **CRTP_JSONSet** — `obj[key] = value`. `value_is_json` (default `true`) parses
+  the value as JSON (numbers/bools/objects/arrays); otherwise it is set as a
+  raw string.
+- **CRTP_JSONDeleteKey** — remove `key` entirely; outputs `(JSON, removed)`.
+- **CRTP_JSONGet** — return `obj[key]` as `(value: *, value_str: STRING,
+  found: BOOLEAN)` with an optional `default`.
+
+Chain like: `JSON Parse -> JSON Set -> JSON Delete Key -> JSON Stringify`.
+
 ### CRTP_GetTensorShape
 
 Generic tensor shape inspector.
