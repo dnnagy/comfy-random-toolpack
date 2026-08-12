@@ -387,6 +387,45 @@ class CRTP_LazyLoadVideoSelect:
         return True
 
 
+class CRTP_LazyGetVideoComponents:
+    """Extract video components, returning empty outputs for a missing video.
+
+    Designed to consume CRTP_LazyLoadVideoUpload/Select. Unlike ComfyUI's
+    GetVideoComponents, this node accepts the loader's None result without
+    crashing.
+
+    The first four outputs intentionally match core GetVideoComponents.
+    """
+
+    CATEGORY = "video"
+    FUNCTION = "get_components"
+
+    RETURN_TYPES = ("IMAGE", "AUDIO", "FLOAT", "INT", "BOOLEAN")
+    RETURN_NAMES = ("images", "audio", "fps", "bit_depth", "loaded")
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "video": ("VIDEO",),
+            },
+        }
+
+    def get_components(self, video):
+        if video is None:
+            return (None, None, 0.0, 0, False)
+
+        components = video.get_components()
+
+        return (
+            components.images,
+            components.audio,
+            float(components.frame_rate),
+            video.get_bit_depth(),
+            True,
+        )
+
+
 NODE_CLASS_MAPPINGS = {
     "CRTP_LazyLoadImageUpload": CRTP_LazyLoadImageUpload,
     "CRTP_LazyLoadImageSelect": CRTP_LazyLoadImageSelect,
@@ -394,6 +433,7 @@ NODE_CLASS_MAPPINGS = {
     "CRTP_LazyLoadAudioSelect": CRTP_LazyLoadAudioSelect,
     "CRTP_LazyLoadVideoUpload": CRTP_LazyLoadVideoUpload,
     "CRTP_LazyLoadVideoSelect": CRTP_LazyLoadVideoSelect,
+    "CRTP_LazyGetVideoComponents": CRTP_LazyGetVideoComponents,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -403,4 +443,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "CRTP_LazyLoadAudioSelect": "CRTP Lazy Load Audio (Select)",
     "CRTP_LazyLoadVideoUpload": "CRTP Lazy Load Video (Upload)",
     "CRTP_LazyLoadVideoSelect": "CRTP Lazy Load Video (Select)",
+    "CRTP_LazyGetVideoComponents": "CRTP Lazy Get Video Components",
 }
