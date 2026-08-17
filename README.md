@@ -14,19 +14,21 @@ conditioning. Neither `ComfyUI_MiniMax_H3_Extender` nor
   24 fps timeline, aspect-fits it to the generation canvas, and extracts a
   valid 5, 22, 39, or 56-frame native Ref2VA video reference plus its exact
   final frame.
-- **CRTP_H3ContinuationLength** — converts the requested amount of new video
-  to H3's 17k+5 frame grid while reserving one internal boundary frame.
-- **CRTP_H3AddFirstFrameAnchor** — adds the exact source boundary to native
-  Ref2VA conditioning as a never-denoised frame-zero keyframe.
-- **CRTP_H3TrimContinuationAV** — removes that internal boundary frame and its
-  time-aligned audio prefix after native ComfyUI AV decoding.
+- **CRTP_H3ContinuationLength** — adds the guide overlap to the requested new
+  video and snaps the combined sampling length to H3's 17k+5 frame grid.
+- **CRTP_H3AlignedAudioTail** — extracts the source-audio window exactly
+  aligned to the selected final video frames.
+- **CRTP_H3TrimContinuationAV** — removes the native multi-frame guide overlap
+  and its time-aligned audio prefix after ComfyUI AV decoding.
 
-The source tail should be connected to the core
-`MiniMaxH3ReferenceToVideo` node as `<Video 1>`, while the source's complete
-soundtrack and optional new voices use its three standalone audio inputs as
-`<Audio 1>` through `<Audio 3>`. The requested duration represents new
-continuation material after the internal anchor is trimmed. Use 22 reference
-frames normally and 5 for a source shorter than roughly one second.
+The source tail should be connected both to core
+`MiniMaxH3ReferenceToVideo` as `<Video 1>` and to core `MiniMaxH3AddGuide` as
+the frame-zero hard AV guide. The source's complete soundtrack and optional
+new voices use Ref2VA's standalone audio inputs as `<Audio 1>` through
+`<Audio 3>`. The requested duration represents new continuation material
+after the guide is trimmed. Use 22 guide/reference frames normally and 5 for a
+source shorter than roughly one second. This graph requires ComfyUI commit
+`e01fb4c56b7a88149d469b99cbbfe3223d715054` or newer.
 
 ### CRTP_LazyLatentFallback
 

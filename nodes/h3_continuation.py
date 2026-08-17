@@ -3,8 +3,8 @@
 The nodes in this module use only ComfyUI core types and APIs. In particular,
 they do not import ComfyUI_MiniMax_H3_Extender or ComfyUI-H3-Motion-Context.
 The workflow uses the source tail as a native Ref2VA video reference and the
-exact source boundary as a native first-frame keyframe. The boundary frame is
-removed from the decoded result before it is saved and concatenated.
+source tail as a native multi-frame guide. The guide overlap is removed from
+the decoded result before it is saved and concatenated.
 """
 
 from __future__ import annotations
@@ -14,7 +14,6 @@ import math
 import torch
 
 import comfy.utils
-import node_helpers
 
 
 FPS = 24
@@ -52,10 +51,39 @@ def _fit_frames(images: torch.Tensor, width: int, height: int) -> torch.Tensor:
     return output
 
 
-def _align_h3_frame_count(frame_count: int) -> int:
-    """Round upward to the 17k+5 frame grid required by MiniMax H3."""
-    result = max(5, int(frame_count))
-    return result + (5 - result % 17) % 17
+def _nearest_h3_frame_count(frame_count: int) -> int:
+    """Snap to the nearest 17k+5 frame count required by MiniMax H3."""
+    requested = max(5, int(frame_count))
+    cycle = max(0, int(round((requested - 5) / 17.0)))
+    return 5 + cycle * 17
+
+
+def _aligned_audio_window(audio, source_duration: float, window_duration: float):
+    """Return the source-audio window aligned to the source video's end."""
+    if audio is None:
+        return None
+
+    waveform = audio["waveform"][:1]
+    sample_rate = int(audio["sample_rate"])
+    if waveform.ndim != 3 or sample_rate <= 0:
+        raise ValueError("CRTP H3 Aligned Audio Tail: invalid source audio.")
+
+    target_samples = max(1, int(round(float(window_duration) * sample_rate)))
+    window_end = int(round(float(source_duration) * sample_rate))
+    window_start = window_end - target_samples
+    audio_samples = int(waveform.shape[-1])
+    result = torch.zeros(
+        (1, int(waveform.shape[-2]), target_samples),
+        dtype=waveform.dtype,
+        device=waveform.device,
+    )
+    copy_start = max(0, window_start)
+    copy_end = min(audio_samples, window_end)
+    if copy_end > copy_start:
+        destination_start = copy_start - window_start
+        destination_end = destination_start + (copy_end - copy_start)
+        result[..., destination_start:destination_end] = waveform[..., copy_start:copy_end]
+    return {"waveform": result, "sample_rate": sample_rate}
 
 
 class CRTP_H3ContinuationTail:
@@ -131,7 +159,7 @@ class CRTP_H3ContinuationTail:
 
 
 class CRTP_H3ContinuationLength:
-    """Convert requested new duration to an H3 length including one anchor frame."""
+    """Add the guide overlap and snap total sampling length to H3's frame grid."""
 
     CATEGORY = "CRTP/MiniMax H3"
     FUNCTION = "calculate"
@@ -143,63 +171,61 @@ class CRTP_H3ContinuationLength:
         return {
             "required": {
                 "seconds": ("FLOAT", {"default": 10.0, "min": 1.0, "max": 150.0, "step": 0.5}),
+                "context_frames": ("INT", {"default": 22, "min": 5, "max": 56}),
             }
         }
 
-    def calculate(self, seconds):
+    def calculate(self, seconds, context_frames):
         seconds = float(seconds)
         if not math.isfinite(seconds) or seconds <= 0:
             raise ValueError("CRTP H3 Continuation Length: duration must be positive.")
+        context_frames = int(context_frames)
+        if context_frames not in VALID_CONTEXT_LENGTHS:
+            raise ValueError(
+                f"CRTP H3 Continuation Length: context must be one of {VALID_CONTEXT_LENGTHS}."
+            )
         requested_new_frames = max(1, int(round(seconds * FPS)))
-        model_frames = _align_h3_frame_count(requested_new_frames + 1)
-        new_frames = model_frames - 1
+        model_frames = _nearest_h3_frame_count(requested_new_frames + context_frames)
+        if model_frames <= context_frames:
+            model_frames = _nearest_h3_frame_count(context_frames + 5)
+        new_frames = model_frames - context_frames
         actual_duration = new_frames / float(FPS)
         return (
             model_frames,
             new_frames,
             actual_duration,
             f"{seconds:g}s requested -> {model_frames} model frames; "
-            f"trim 1 boundary frame -> {new_frames} new frames ({actual_duration:.3f}s)",
+            f"trim {context_frames} guide frames -> {new_frames} new frames "
+            f"({actual_duration:.3f}s)",
         )
 
 
-class CRTP_H3AddFirstFrameAnchor:
-    """Attach an exact frame-zero keyframe to native Ref2VA conditioning."""
+class CRTP_H3AlignedAudioTail:
+    """Extract the audio guide aligned to the final source-video frames."""
 
     CATEGORY = "CRTP/MiniMax H3"
-    FUNCTION = "apply"
-    RETURN_TYPES = ("CONDITIONING", "STRING")
-    RETURN_NAMES = ("conditioning", "status")
+    FUNCTION = "extract"
+    RETURN_TYPES = ("AUDIO", "STRING")
+    RETURN_NAMES = ("audio", "status")
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "conditioning": ("CONDITIONING",),
-                "first_frame": ("IMAGE",),
-                "vae": ("VAE",),
-                "width": ("INT", {"default": 960, "min": 32, "max": 4096, "step": 32}),
-                "height": ("INT", {"default": 544, "min": 32, "max": 4096, "step": 32}),
-                "frame_count": ("INT", {"default": 243, "min": 5, "max": 3600}),
-            }
+                "context_duration": ("FLOAT", {"default": 22 / 24}),
+                "source_duration": ("FLOAT", {"default": 1.0}),
+            },
+            "optional": {"source_audio": ("AUDIO", {"forceInput": True})},
         }
 
-    def apply(self, conditioning, first_frame, vae, width, height, frame_count):
-        frame_count = int(frame_count)
-        if frame_count % 17 != 5:
-            raise ValueError(
-                "CRTP H3 First Frame Anchor: frame_count must be on H3's 17k+5 grid."
-            )
-        image = _fit_frames(first_frame[:1], int(width), int(height))
-        keyframe = {"resolved_frame_index": 0, "latent": vae.encode(image)}
-        anchored = node_helpers.conditioning_set_values(
-            conditioning,
-            {
-                "minimax_keyframes": [keyframe],
-                "minimax_frame_count": frame_count,
-            },
+    def extract(self, context_duration, source_duration, source_audio=None):
+        aligned = _aligned_audio_window(
+            source_audio, float(source_duration), float(context_duration)
         )
-        return anchored, f"native MiniMax H3 first-frame anchor at frame 0/{frame_count - 1}"
+        if aligned is None:
+            return None, "source video has no audio; native guide is video-only"
+        sample_count = int(aligned["waveform"].shape[-1])
+        return aligned, f"aligned {sample_count} audio samples to the source-video boundary"
 
 
 class CRTP_H3TrimContinuationAV:
@@ -251,14 +277,14 @@ class CRTP_H3TrimContinuationAV:
 NODE_CLASS_MAPPINGS = {
     "CRTP_H3ContinuationTail": CRTP_H3ContinuationTail,
     "CRTP_H3ContinuationLength": CRTP_H3ContinuationLength,
-    "CRTP_H3AddFirstFrameAnchor": CRTP_H3AddFirstFrameAnchor,
+    "CRTP_H3AlignedAudioTail": CRTP_H3AlignedAudioTail,
     "CRTP_H3TrimContinuationAV": CRTP_H3TrimContinuationAV,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "CRTP_H3ContinuationTail": "CRTP H3 Continuation Tail (24 fps)",
     "CRTP_H3ContinuationLength": "CRTP H3 Continuation Length",
-    "CRTP_H3AddFirstFrameAnchor": "CRTP H3 Add First-Frame Anchor",
+    "CRTP_H3AlignedAudioTail": "CRTP H3 Aligned Audio Tail",
     "CRTP_H3TrimContinuationAV": "CRTP H3 Trim Continuation AV",
 }
 
