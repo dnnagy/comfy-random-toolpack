@@ -4,6 +4,27 @@ A grab-bag of small, useful ComfyUI custom nodes.
 
 ## Nodes
 
+### CRTP MiniMax H3 Continuation Nodes
+
+These nodes extend the separately installed, commit-pinned
+`ComfyUI_MiniMax_H3_Extender` with uploaded-video motion context and all three
+standalone Ref2VA audio references supported by ComfyUI core.
+
+- **CRTP_H3ContinuationTail** — resamples the final source window to H3's
+  24 fps timeline, aspect-fits it to the generation canvas, and extracts a
+  valid 5, 22, 39, or 56-frame context tail plus its exact final frame.
+- **CRTP_H3EncodeContinuationContext** — VAE-encodes that video tail and its
+  time-aligned source audio into a joint H3 audio/video latent.
+- **CRTP_MiniMaxH3ContinuationExtender** — applies the source latent as
+  clip-zero Motion Context and exposes `<Audio 1>`, optional `<Audio 2>`, and
+  optional `<Audio 3>` reference inputs. Audio slots must be contiguous so
+  MiniMax cannot silently renumber them.
+
+The overlap exists only inside sampling and is trimmed before final decode.
+The requested clip duration therefore represents new continuation material.
+Use 22 context frames normally and 5 for a source shorter than roughly one
+second.
+
 ### CRTP_LazyLatentFallback
 
 Pick between two `LATENT` inputs *without* evaluating both upstream branches.
