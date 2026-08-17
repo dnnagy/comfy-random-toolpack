@@ -6,24 +6,27 @@ A grab-bag of small, useful ComfyUI custom nodes.
 
 ### CRTP MiniMax H3 Continuation Nodes
 
-These nodes extend the separately installed, commit-pinned
-`ComfyUI_MiniMax_H3_Extender` with uploaded-video motion context and all three
-standalone Ref2VA audio references supported by ComfyUI core.
+These nodes are self-contained and use only ComfyUI core's native MiniMax H3
+conditioning. Neither `ComfyUI_MiniMax_H3_Extender` nor
+`ComfyUI-H3-Motion-Context` is required.
 
 - **CRTP_H3ContinuationTail** — resamples the final source window to H3's
   24 fps timeline, aspect-fits it to the generation canvas, and extracts a
-  valid 5, 22, 39, or 56-frame context tail plus its exact final frame.
-- **CRTP_H3EncodeContinuationContext** — VAE-encodes that video tail and its
-  time-aligned source audio into a joint H3 audio/video latent.
-- **CRTP_MiniMaxH3ContinuationExtender** — applies the source latent as
-  clip-zero Motion Context and exposes `<Audio 1>`, optional `<Audio 2>`, and
-  optional `<Audio 3>` reference inputs. Audio slots must be contiguous so
-  MiniMax cannot silently renumber them.
+  valid 5, 22, 39, or 56-frame native Ref2VA video reference plus its exact
+  final frame.
+- **CRTP_H3ContinuationLength** — converts the requested amount of new video
+  to H3's 17k+5 frame grid while reserving one internal boundary frame.
+- **CRTP_H3AddFirstFrameAnchor** — adds the exact source boundary to native
+  Ref2VA conditioning as a never-denoised frame-zero keyframe.
+- **CRTP_H3TrimContinuationAV** — removes that internal boundary frame and its
+  time-aligned audio prefix after native ComfyUI AV decoding.
 
-The overlap exists only inside sampling and is trimmed before final decode.
-The requested clip duration therefore represents new continuation material.
-Use 22 context frames normally and 5 for a source shorter than roughly one
-second.
+The source tail should be connected to the core
+`MiniMaxH3ReferenceToVideo` node as `<Video 1>`, while the source's complete
+soundtrack and optional new voices use its three standalone audio inputs as
+`<Audio 1>` through `<Audio 3>`. The requested duration represents new
+continuation material after the internal anchor is trimmed. Use 22 reference
+frames normally and 5 for a source shorter than roughly one second.
 
 ### CRTP_LazyLatentFallback
 

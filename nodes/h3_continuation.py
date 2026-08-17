@@ -1,52 +1,29 @@
-"""CRTP MiniMax H3 continuation nodes.
+"""Self-contained MiniMax H3 video-continuation helpers.
 
-These nodes intentionally layer on top of the pinned MiniMax H3 Extender
-instead of replacing it.  They add the two pieces that upstream does not
-currently provide:
-
-* an H3-compatible audio/video latent made from the tail of an uploaded video;
-* an Extender variant that can use that latent for clip zero and exposes all
-  three standalone Ref2VA audio slots supported by ComfyUI core.
+The nodes in this module use only ComfyUI core types and APIs. In particular,
+they do not import ComfyUI_MiniMax_H3_Extender or ComfyUI-H3-Motion-Context.
+The workflow uses the source tail as a native Ref2VA video reference and the
+exact source boundary as a native first-frame keyframe. The boundary frame is
+removed from the decoded result before it is saved and concatenated.
 """
 
 from __future__ import annotations
 
 import math
-import sys
 
 import torch
-import torchaudio
 
-import comfy.model_management
-import comfy.nested_tensor
 import comfy.utils
+import node_helpers
 
 
 FPS = 24
 VALID_CONTEXT_LENGTHS = (5, 22, 39, 56)
-BUILD = "crtp-h3-continuation-v1"
-
-
-def _upstream():
-    """Find the Extender module regardless of ComfyUI's generated namespace.
-
-    ComfyUI loads custom-node directories with a filesystem-derived module
-    name (for example ``/app/ComfyUI/custom_nodes/...``), so importing a sibling
-    custom node by its directory basename is not reliable.  The module's file
-    path is stable across those namespaces.
-    """
-    for module in tuple(sys.modules.values()):
-        module_file = str(getattr(module, "__file__", "") or "").replace("\\", "/")
-        if module_file.endswith("/ComfyUI_MiniMax_H3_Extender/extender.py"):
-            return module
-    raise RuntimeError(
-        "CRTP MiniMax H3 Continuation Extender requires the separately installed "
-        "ComfyUI_MiniMax_H3_Extender custom node. Restart ComfyUI after installing it."
-    )
+BUILD = "crtp-h3-continuation-v2-native"
 
 
 def _fit_frames(images: torch.Tensor, width: int, height: int) -> torch.Tensor:
-    """Aspect-fit frames exactly once, using the same letterbox policy as concat."""
+    """Aspect-fit frames to the generation canvas with symmetric letterboxing."""
     if images is None or images.ndim != 4 or int(images.shape[0]) < 1:
         raise ValueError("CRTP H3 Continuation Tail: source video has no decoded frames.")
 
@@ -75,49 +52,14 @@ def _fit_frames(images: torch.Tensor, width: int, height: int) -> torch.Tensor:
     return output
 
 
-def _aligned_audio_window(audio, source_duration: float, window_duration: float):
-    """Return the audio window aligned to the end of the source video.
-
-    Missing portions are zero padded.  This matters for videos whose audio
-    stream starts late or ends slightly before the video stream.
-    """
-    if audio is None:
-        return None
-
-    waveform = audio["waveform"][:1]
-    sample_rate = int(audio["sample_rate"])
-    if waveform.ndim != 3 or sample_rate <= 0:
-        raise ValueError("CRTP H3 Encode Continuation Context: invalid source audio.")
-
-    target_samples = max(1, int(round(float(window_duration) * sample_rate)))
-    window_end = int(round(float(source_duration) * sample_rate))
-    window_start = window_end - target_samples
-    audio_samples = int(waveform.shape[-1])
-
-    result = torch.zeros(
-        (1, int(waveform.shape[-2]), target_samples),
-        dtype=waveform.dtype,
-        device=waveform.device,
-    )
-    copy_start = max(0, window_start)
-    copy_end = min(audio_samples, window_end)
-    if copy_end > copy_start:
-        destination_start = copy_start - window_start
-        destination_end = destination_start + (copy_end - copy_start)
-        result[..., destination_start:destination_end] = waveform[..., copy_start:copy_end]
-
-    return {"waveform": result, "sample_rate": sample_rate}
-
-
-def _nearest_h3_frame_count(frame_count: int) -> int:
-    """Snap to H3's 17k+5 grid without always lengthening the request."""
-    requested = max(5, int(frame_count))
-    cycle = max(0, int(round((requested - 5) / 17.0)))
-    return 5 + cycle * 17
+def _align_h3_frame_count(frame_count: int) -> int:
+    """Round upward to the 17k+5 frame grid required by MiniMax H3."""
+    result = max(5, int(frame_count))
+    return result + (5 - result % 17) % 17
 
 
 class CRTP_H3ContinuationTail:
-    """Resample only the required source tail to H3's 24 fps timeline."""
+    """Resample the source tail to H3's 24 fps reference-video timeline."""
 
     CATEGORY = "CRTP/MiniMax H3"
     FUNCTION = "extract"
@@ -162,8 +104,6 @@ class CRTP_H3ContinuationTail:
                 "Choose a shorter context window or upload a longer video."
             )
 
-        # Match FFmpeg's nearest-frame 24 fps resampling while forcing the
-        # boundary sample to be the exact final decoded source frame.
         target_positions = torch.arange(
             normalized_count - requested,
             normalized_count,
@@ -178,7 +118,7 @@ class CRTP_H3ContinuationTail:
         context_duration = requested / float(FPS)
         status = (
             f"{source_count} frames at {source_fps:g} fps -> final {requested} frames "
-            f"at {FPS} fps, {int(width)}x{int(height)}"
+            f"at {FPS} fps, {int(width)}x{int(height)} native Ref2VA video reference"
         )
         return (
             tail,
@@ -190,374 +130,136 @@ class CRTP_H3ContinuationTail:
         )
 
 
-class CRTP_H3EncodeContinuationContext:
-    """VAE-encode a normalized source tail into a joint H3 AV latent."""
+class CRTP_H3ContinuationLength:
+    """Convert requested new duration to an H3 length including one anchor frame."""
 
     CATEGORY = "CRTP/MiniMax H3"
-    FUNCTION = "encode"
-    RETURN_TYPES = ("LATENT", "AUDIO", "INT", "INT", "STRING")
-    RETURN_NAMES = (
-        "context_latent",
-        "aligned_audio",
-        "video_latent_steps",
-        "audio_latent_steps",
-        "status",
-    )
+    FUNCTION = "calculate"
+    RETURN_TYPES = ("INT", "INT", "FLOAT", "STRING")
+    RETURN_NAMES = ("model_frame_count", "new_frame_count", "actual_new_duration", "status")
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "tail_frames": ("IMAGE",),
-                "vae": ("VAE",),
-                "audio_vae": ("VAE",),
-                "context_duration": ("FLOAT", {"default": 22 / 24}),
-                "source_duration": ("FLOAT", {"default": 1.0}),
-            },
-            "optional": {
-                "source_audio": ("AUDIO", {"forceInput": True}),
-            },
+                "seconds": ("FLOAT", {"default": 10.0, "min": 1.0, "max": 150.0, "step": 0.5}),
+            }
         }
 
-    def encode(
-        self,
-        tail_frames,
-        vae,
-        audio_vae,
-        context_duration,
-        source_duration,
-        source_audio=None,
-    ):
-        frame_count = int(tail_frames.shape[0])
-        if frame_count not in VALID_CONTEXT_LENGTHS:
-            raise ValueError(
-                "CRTP H3 Encode Continuation Context: tail must contain "
-                f"one of {VALID_CONTEXT_LENGTHS}, got {frame_count}."
-            )
-
-        aligned = _aligned_audio_window(
-            source_audio, float(source_duration), float(context_duration)
-        )
-        vae_sample_rate = int(getattr(audio_vae, "audio_sample_rate", 32000))
-        if aligned is None:
-            audio_samples = max(1, int(round(float(context_duration) * vae_sample_rate)))
-            waveform = torch.zeros(
-                (1, 1, audio_samples),
-                dtype=torch.float32,
-                device=comfy.model_management.intermediate_device(),
-            )
-            aligned = {"waveform": waveform, "sample_rate": vae_sample_rate}
-
-        waveform = aligned["waveform"]
-        sample_rate = int(aligned["sample_rate"])
-        if sample_rate != vae_sample_rate:
-            waveform = torchaudio.functional.resample(waveform, sample_rate, vae_sample_rate)
-
-        video_latent = vae.encode(tail_frames)
-        audio_latent = audio_vae.encode(waveform[:1].movedim(1, -1))
-        latent = {
-            "samples": comfy.nested_tensor.NestedTensor((video_latent, audio_latent))
-        }
-        status = (
-            f"encoded {frame_count} source frames into {int(video_latent.shape[2])} "
-            f"video and {int(audio_latent.shape[-1])} audio latent steps"
-        )
+    def calculate(self, seconds):
+        seconds = float(seconds)
+        if not math.isfinite(seconds) or seconds <= 0:
+            raise ValueError("CRTP H3 Continuation Length: duration must be positive.")
+        requested_new_frames = max(1, int(round(seconds * FPS)))
+        model_frames = _align_h3_frame_count(requested_new_frames + 1)
+        new_frames = model_frames - 1
+        actual_duration = new_frames / float(FPS)
         return (
-            latent,
-            aligned,
-            int(video_latent.shape[2]),
-            int(audio_latent.shape[-1]),
-            status,
+            model_frames,
+            new_frames,
+            actual_duration,
+            f"{seconds:g}s requested -> {model_frames} model frames; "
+            f"trim 1 boundary frame -> {new_frames} new frames ({actual_duration:.3f}s)",
         )
 
 
-class CRTP_MiniMaxH3ContinuationExtender:
-    """Upstream Extender plus clip-zero motion context and three audio refs."""
+class CRTP_H3AddFirstFrameAnchor:
+    """Attach an exact frame-zero keyframe to native Ref2VA conditioning."""
+
+    CATEGORY = "CRTP/MiniMax H3"
+    FUNCTION = "apply"
+    RETURN_TYPES = ("CONDITIONING", "STRING")
+    RETURN_NAMES = ("conditioning", "status")
 
     @classmethod
     def INPUT_TYPES(cls):
-        upstream = _upstream()
-        schema = upstream.MiniMaxH3Extender.INPUT_TYPES()
-        optional = dict(schema.get("optional", {}))
-        optional.update(
-            {
-                "initial_context": ("LATENT", {"forceInput": True}),
-                "ref_audio_2": ("AUDIO", {"forceInput": True}),
-                "ref_audio_3": ("AUDIO", {"forceInput": True}),
+        return {
+            "required": {
+                "conditioning": ("CONDITIONING",),
+                "first_frame": ("IMAGE",),
+                "vae": ("VAE",),
+                "width": ("INT", {"default": 960, "min": 32, "max": 4096, "step": 32}),
+                "height": ("INT", {"default": 544, "min": 32, "max": 4096, "step": 32}),
+                "frame_count": ("INT", {"default": 243, "min": 5, "max": 3600}),
             }
-        )
-        return {
-            "required": dict(schema["required"]),
-            "optional": optional,
-            "hidden": dict(schema.get("hidden", {})),
         }
 
-    RETURN_TYPES = ("H3_MOTION_DISK_CACHE", "INT", "INT", "STRING", "FLOAT", "STRING")
-    RETURN_NAMES = (
-        "cache",
-        "clip_count",
-        "validated_count",
-        "status",
-        "cache_size_mb",
-        "build",
-    )
-    FUNCTION = "extend"
+    def apply(self, conditioning, first_frame, vae, width, height, frame_count):
+        frame_count = int(frame_count)
+        if frame_count % 17 != 5:
+            raise ValueError(
+                "CRTP H3 First Frame Anchor: frame_count must be on H3's 17k+5 grid."
+            )
+        image = _fit_frames(first_frame[:1], int(width), int(height))
+        keyframe = {"resolved_frame_index": 0, "latent": vae.encode(image)}
+        anchored = node_helpers.conditioning_set_values(
+            conditioning,
+            {
+                "minimax_keyframes": [keyframe],
+                "minimax_frame_count": frame_count,
+            },
+        )
+        return anchored, f"native MiniMax H3 first-frame anchor at frame 0/{frame_count - 1}"
+
+
+class CRTP_H3TrimContinuationAV:
+    """Remove internal boundary frames and the time-aligned decoded audio prefix."""
+
     CATEGORY = "CRTP/MiniMax H3"
-    OUTPUT_NODE = False
+    FUNCTION = "trim"
+    RETURN_TYPES = ("IMAGE", "AUDIO", "STRING")
+    RETURN_NAMES = ("images", "audio", "status")
 
-    def extend(
-        self,
-        model,
-        clip,
-        vae,
-        run_mode,
-        width,
-        height,
-        ref_image_size,
-        steps,
-        sampler_name,
-        scheduler,
-        denoise,
-        context_length,
-        audio_context_length,
-        clips_json,
-        unique_id=None,
-        **kwargs,
-    ):
-        upstream = _upstream()
-        clips = upstream._parse_clips_json(clips_json)
-        owner = str(unique_id if unique_id is not None else "h3_continuation_extender")
-        data_path, manifest_path, manifest = upstream._manifest_for_extender(owner, upstream.FPS)
-
-        if len(manifest.get("segments", [])) > len(clips):
-            manifest = upstream._truncate_chain(
-                data_path, manifest_path, manifest, len(clips)
-            )
-
-        segments = manifest.get("segments", [])
-        if len(segments) < len(clips):
-            for i in range(len(segments), len(clips)):
-                if clips[i]["validated"]:
-                    for j in range(i, len(clips)):
-                        clips[j]["validated"] = False
-                    break
-
-        refs = [kwargs.get(f"ref_{i}") for i in range(1, 10)]
-        audio_vae = kwargs.get("audio_vae")
-        ref_items, ref_blocks = upstream._prepare_shared_refs(
-            vae,
-            audio_vae,
-            int(width),
-            int(height),
-            str(ref_image_size),
-            refs,
-            ref_audio=None,
-        )
-
-        audios = [
-            kwargs.get("ref_audio"),
-            kwargs.get("ref_audio_2"),
-            kwargs.get("ref_audio_3"),
-        ]
-        seen_audio_gap = False
-        for index, audio in enumerate(audios, start=1):
-            if audio is None:
-                seen_audio_gap = True
-                continue
-            if seen_audio_gap:
-                raise ValueError(
-                    "CRTP MiniMax H3 Continuation Extender: audio reference slots "
-                    f"must be connected contiguously. <Audio {index}> cannot be used "
-                    f"without <Audio {index - 1}>."
-                )
-            if audio_vae is None:
-                raise ValueError(
-                    "CRTP MiniMax H3 Continuation Extender: connect audio_vae when "
-                    "using reference audio."
-                )
-            if not ref_items:
-                raise ValueError(
-                    "CRTP MiniMax H3 Continuation Extender: Ref2VA audio requires "
-                    "at least one image reference."
-                )
-            audio_latent, ref_audio_t = upstream._encode_ref_audio(audio_vae, audio)
-            ref_items.append({"type": "audio"})
-            ref_blocks.append(
-                {
-                    "kind": "audio",
-                    "ref_audio_t": int(ref_audio_t),
-                    "audio_latent": audio_latent,
-                }
-            )
-
-        disk_join = upstream.MiniMaxH3MotionContextDiskJoin()
-        motion = upstream.MiniMaxH3MotionContextRAM()
-        initial_context = kwargs.get("initial_context")
-
-        previous_handle = None
-        previous_proxy = None
-        generated = []
-        statuses = []
-
-        for i, cfg in enumerate(clips):
-            current_manifest = upstream._load_manifest_from_paths(data_path, manifest_path)
-            existing_count = len(current_manifest.get("segments", [])) if current_manifest else 0
-            existing = i < existing_count
-
-            if cfg["validated"] and existing:
-                result = disk_join.join(
-                    samples=None,
-                    trim_frames=None,
-                    validated=True,
-                    run_mode=str(run_mode),
-                    fps=float(upstream.FPS),
-                    previous_cache=previous_handle,
-                    unique_id=f"extender_{owner}",
-                )
-                previous_handle = result[0]
-                previous_proxy = result[1]
-                statuses.append(result[4])
-                continue
-
-            upstream._send_extender_progress(
-                owner, i, len(clips), "preparing", f"Preparing clip {i + 1}/{len(clips)}"
-            )
-            cfg["validated"] = False
-            for j in range(i + 1, len(clips)):
-                clips[j]["validated"] = False
-
-            context_source = initial_context if i == 0 else previous_proxy
-            if context_source is not None:
-                # The overlap is decoded and trimmed by Disk Join. Add it to
-                # the internal sample length so the user still receives the
-                # requested amount of *new* video rather than a shorter clip.
-                requested_new_frames = max(5, int(round(float(cfg["duration"]) * upstream.FPS)))
-                frame_count = _nearest_h3_frame_count(
-                    requested_new_frames + int(context_length)
-                )
-            else:
-                frame_count = upstream._duration_to_frames(cfg["duration"])
-            positive, latent = upstream._make_ref2va_conditioning(
-                clip,
-                vae,
-                cfg["prompt"],
-                int(width),
-                int(height),
-                frame_count,
-                ref_items,
-                ref_blocks,
-            )
-
-            trim_frames = None
-            if context_source is not None:
-                positive, trim_frames, _, _, _ = motion.apply(
-                    positive,
-                    latent,
-                    context_source,
-                    str(context_length),
-                    int(audio_context_length),
-                )
-            elif i > 0:
-                raise RuntimeError(
-                    "CRTP MiniMax H3 Continuation Extender: previous cached latent "
-                    "is unavailable."
-                )
-
-            upstream._send_extender_progress(
-                owner, i, len(clips), "sampling", f"Rendering clip {i + 1}/{len(clips)}"
-            )
-            sampled = upstream._sample_h3(
-                model,
-                positive,
-                latent,
-                cfg["seed"],
-                str(sampler_name),
-                str(scheduler),
-                int(steps),
-                float(denoise),
-            )
-            result = disk_join.join(
-                samples=sampled,
-                trim_frames=trim_frames,
-                validated=False,
-                run_mode=str(run_mode),
-                fps=float(upstream.FPS),
-                previous_cache=previous_handle,
-                unique_id=f"extender_{owner}",
-            )
-            previous_handle = result[0]
-            previous_proxy = result[1]
-            statuses.append(result[4])
-            generated.append(i)
-
-            upstream._send_extender_progress(
-                owner, i, len(clips), "complete", f"Clip {i + 1}/{len(clips)} complete"
-            )
-            del sampled, positive, latent
-            if str(run_mode) == "clip_by_clip":
-                break
-
-        if previous_handle is None:
-            raise RuntimeError(
-                "CRTP MiniMax H3 Continuation Extender: sequence produced no cache handle."
-            )
-
-        final_manifest = upstream._load_manifest_from_paths(data_path, manifest_path)
-        cached_count = len(final_manifest.get("segments", []))
-        validated_count = 0
-        for descriptor in final_manifest.get("segments", []):
-            if bool(descriptor.get("validated", False)):
-                validated_count += 1
-            else:
-                break
-
-        status = (
-            f"{str(run_mode)} | cached {cached_count}/{len(clips)} | "
-            f"validated {validated_count} | "
-            + (
-                "generated " + ",".join(str(i + 1) for i in generated)
-                if generated
-                else "disk only"
-            )
-            + (" | source context" if initial_context is not None else "")
-            + f" | {len([a for a in audios if a is not None])} audio refs"
-        )
-        cache_mb = upstream._cache_size_mb(data_path, manifest_path)
-        upstream._send_extender_progress(owner, -1, len(clips), "idle", status)
-
-        normalized_json = upstream._state_json(clips)
-        ui_state = {
-            "clips_json": normalized_json,
-            "clip_count": len(clips),
-            "cached_count": cached_count,
-            "validated_count": validated_count,
-            "generated": [i + 1 for i in generated],
-            "status": status,
-            "build": BUILD,
-        }
+    @classmethod
+    def INPUT_TYPES(cls):
         return {
-            "ui": {"h3_extender_state": [ui_state]},
-            "result": (
-                previous_handle,
-                int(len(clips)),
-                int(validated_count),
-                status,
-                float(cache_mb),
-                BUILD,
-            ),
+            "required": {
+                "images": ("IMAGE",),
+                "audio": ("AUDIO",),
+                "trim_frames": ("INT", {"default": 1, "min": 0, "max": 56}),
+                "fps": ("FLOAT", {"default": 24.0, "min": 1.0, "max": 120.0}),
+            }
         }
+
+    def trim(self, images, audio, trim_frames, fps):
+        trim_frames = int(trim_frames)
+        fps = float(fps)
+        if not math.isfinite(fps) or fps <= 0:
+            raise ValueError("CRTP H3 Trim Continuation AV: FPS must be positive.")
+        if trim_frames >= int(images.shape[0]):
+            raise ValueError(
+                "CRTP H3 Trim Continuation AV: trim would remove every generated frame."
+            )
+
+        waveform = audio["waveform"]
+        sample_rate = int(audio["sample_rate"])
+        trim_samples = int(round(trim_frames * sample_rate / fps))
+        if trim_samples >= int(waveform.shape[-1]):
+            raise ValueError(
+                "CRTP H3 Trim Continuation AV: trim would remove all generated audio."
+            )
+        trimmed_audio = {**audio, "waveform": waveform[..., trim_samples:]}
+        remaining_frames = int(images.shape[0]) - trim_frames
+        return (
+            images[trim_frames:],
+            trimmed_audio,
+            f"trimmed {trim_frames} boundary frame(s) and {trim_samples} audio samples; "
+            f"{remaining_frames} generated frames remain",
+        )
 
 
 NODE_CLASS_MAPPINGS = {
     "CRTP_H3ContinuationTail": CRTP_H3ContinuationTail,
-    "CRTP_H3EncodeContinuationContext": CRTP_H3EncodeContinuationContext,
-    "CRTP_MiniMaxH3ContinuationExtender": CRTP_MiniMaxH3ContinuationExtender,
+    "CRTP_H3ContinuationLength": CRTP_H3ContinuationLength,
+    "CRTP_H3AddFirstFrameAnchor": CRTP_H3AddFirstFrameAnchor,
+    "CRTP_H3TrimContinuationAV": CRTP_H3TrimContinuationAV,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "CRTP_H3ContinuationTail": "CRTP H3 Continuation Tail (24 fps)",
-    "CRTP_H3EncodeContinuationContext": "CRTP H3 Encode Continuation Context",
-    "CRTP_MiniMaxH3ContinuationExtender": "CRTP MiniMax H3 Continuation Extender",
+    "CRTP_H3ContinuationLength": "CRTP H3 Continuation Length",
+    "CRTP_H3AddFirstFrameAnchor": "CRTP H3 Add First-Frame Anchor",
+    "CRTP_H3TrimContinuationAV": "CRTP H3 Trim Continuation AV",
 }
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
