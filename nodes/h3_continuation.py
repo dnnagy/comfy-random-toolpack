@@ -11,8 +11,8 @@ currently provide:
 
 from __future__ import annotations
 
-import importlib
 import math
+import sys
 
 import torch
 import torchaudio
@@ -28,7 +28,21 @@ BUILD = "crtp-h3-continuation-v1"
 
 
 def _upstream():
-    return importlib.import_module("ComfyUI_MiniMax_H3_Extender.extender")
+    """Find the Extender module regardless of ComfyUI's generated namespace.
+
+    ComfyUI loads custom-node directories with a filesystem-derived module
+    name (for example ``/app/ComfyUI/custom_nodes/...``), so importing a sibling
+    custom node by its directory basename is not reliable.  The module's file
+    path is stable across those namespaces.
+    """
+    for module in tuple(sys.modules.values()):
+        module_file = str(getattr(module, "__file__", "") or "").replace("\\", "/")
+        if module_file.endswith("/ComfyUI_MiniMax_H3_Extender/extender.py"):
+            return module
+    raise RuntimeError(
+        "CRTP MiniMax H3 Continuation Extender requires the separately installed "
+        "ComfyUI_MiniMax_H3_Extender custom node. Restart ComfyUI after installing it."
+    )
 
 
 def _fit_frames(images: torch.Tensor, width: int, height: int) -> torch.Tensor:
