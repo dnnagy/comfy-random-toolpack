@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "name": "portraits",
+  "version": "1.0.0",
+  "assets": [
+    {
+      "id": "portrait-001",
+      "path": "images/portrait-001.png",
+      "description": "Primary portrait with brown hair and neutral lighting.",
+      "attributes": {
+        "role": "identity",
+        "hair_color": "brown",
+        "hairstyle": ["shoulder_length", "wavy"]
+      }
+    },
+    {
+      "id": "portrait-002",
+      "path": "images/portrait-002.png",
+      "description": "Primary portrait with short brown hair.",
+      "attributes": {
+        "role": "identity",
+        "hair_color": "brown",
+        "hairstyle": "short"
+      }
+    }
+  ]
+}

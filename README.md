@@ -30,6 +30,20 @@ after the guide is trimmed. Use 22 guide/reference frames normally and 5 for a
 source shorter than roughly one second. This graph requires ComfyUI commit
 `e01fb4c56b7a88149d469b99cbbfe3223d715054` or newer.
 
+### CRTP_ReferenceImagePicker
+
+Pick a reference image deterministically from a versioned manifest, or load an
+exact stable asset ID. Each node has its own `catalog_path` input, so faces,
+clothing, and backgrounds can live in separate directories.
+
+- Inputs: `catalog_path`, `catalog` (`name@version`), `category`, `value`,
+  `selection_seed` (ordinary INT), optional `asset_id`.
+- Outputs: `image` (IMAGE), `asset_id` (STRING), `description` (STRING).
+- Manifest and selected-file content hashes invalidate cached results.
+- Includes a standalone resolver for saving references when creating jobs.
+
+See [catalog setup, manifest template, and H3 integration](docs/reference-picker.md).
+
 ### CRTP_LazyLatentFallback
 
 Pick between two `LATENT` inputs *without* evaluating both upstream branches.
