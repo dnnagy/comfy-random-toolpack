@@ -1,6 +1,8 @@
 """CPU tests for Viggle media timing and native H3 conditioning contracts."""
 
 import importlib.util
+from fractions import Fraction
+import numpy as np
 from pathlib import Path
 import sys
 import tempfile
@@ -37,6 +39,9 @@ class LazyVideo:
         self.fps = fps
         self.audio = {"waveform": torch.arange(int(frame_count / fps * 24000)).float().view(1, 1, -1), "sample_rate": 24000} if audio else None
         self.calls = []
+        self.dimensions = (32, 32)
+        self.converted = []
+        self.timestamps = None
 
     def get_components(self):
         raise AssertionError("The full source must never be decoded")
@@ -45,7 +50,7 @@ class LazyVideo:
         return self.fps
 
     def get_dimensions(self):
-        return 2, 2
+        return self.dimensions
 
     def as_trimmed(self, start_time, duration, strict_duration):
         self.calls.append((start_time, duration, strict_duration))
@@ -58,17 +63,61 @@ class LazyVideo:
             start = round(start_time * audio["sample_rate"])
             stop = round((start_time + duration) * audio["sample_rate"])
             audio = {**audio, "waveform": audio["waveform"][..., start:stop]}
-        components = types.SimpleNamespace(images=self.images[begin:end], audio=audio, frame_rate=self.fps)
-        return types.SimpleNamespace(get_components=lambda: components, get_duration=lambda: (end - begin) / self.fps,
-                                     _count=end - begin)
+        clip = types.SimpleNamespace(get_duration=lambda: (end - begin) / self.fps,
+                                     _audio=audio)
+        clip.get_components = lambda: (_ for _ in ()).throw(AssertionError("Never build source-resolution tensors"))
+        clip.get_active_trim_window = lambda: (0.0, (end - begin) / self.fps)
+        clip.get_stream_source = lambda: clip
+        times = self.timestamps if self.timestamps is not None else [i / self.fps for i in range(end - begin)]
+        clip.frames = [FakeFrame(begin + i, timestamp, self.fps, self.dimensions, self.converted)
+                       for i, timestamp in enumerate(times)]
+        return clip
+
+
+class FakeFrame:
+    def __init__(self, value, timestamp, fps, dimensions, converted):
+        self.value = value
+        self.pts = timestamp
+        self.time_base = Fraction(1, 1)
+        self.duration = 1 / fps
+        self.width, self.height = dimensions
+        self.format = types.SimpleNamespace(name="yuv420p")
+        self.rotation = 0
+        self.converted = converted
+
+    def to_ndarray(self, *args, **kwargs):
+        raise AssertionError("Source frame must be resized before RGB array conversion")
+
+    def reformat(self, width, height, format, interpolation):
+        self.converted.append((self.value, width, height))
+        return types.SimpleNamespace(to_ndarray=lambda: np.full((height, width, 3), self.value, np.float32))
+
+
+class FakeContainer:
+    def __init__(self, clip):
+        self.clip = clip
+        self.streams = types.SimpleNamespace(video=[types.SimpleNamespace(time_base=Fraction(1, 1000000))])
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def demux(self, stream):
+        for frame in self.clip.frames:
+            yield types.SimpleNamespace(decode=lambda frame=frame: [frame])
+
+    def seek(self, *args, **kwargs):
+        pass
 
 
 class PrepareTests(unittest.TestCase):
     def setUp(self):
-        timeline = patch.object(viggle, "_presentation_timeline", lambda clip, fps, budget: (torch.arange(clip._count, dtype=torch.float64) / fps, clip._count / fps))
-        timeline.start()
-        self.addCleanup(timeline.stop)
-        audio = patch.object(viggle, "_aligned_source_audio", lambda clip, duration: viggle._trim_audio(clip.get_components().audio, duration))
+        decoder = patch("av.open", lambda clip, mode: FakeContainer(clip))
+        decoder.start()
+        self.addCleanup(decoder.stop)
+        audio = patch.object(viggle, "_aligned_source_audio", lambda clip, duration: viggle._trim_audio(clip._audio, duration))
         audio.start()
         self.addCleanup(audio.stop)
 
@@ -108,11 +157,18 @@ class PrepareTests(unittest.TestCase):
             with self.subTest(args=args), self.assertRaises(ValueError):
                 viggle.CRTP_VigglePrepareVideo().prepare(source, **args)
 
-    def test_preflight_rejects_huge_decode_and_invalid_fps_without_decoding(self):
-        source = LazyVideo()
-        source.get_dimensions = lambda: (3840, 2160)
-        with self.assertRaisesRegex(ValueError, "decode budget"):
-            viggle.CRTP_VigglePrepareVideo().prepare(source)
+    def test_4k_60fps_is_downscaled_before_tensor_conversion(self):
+        source = LazyVideo(600, 60, audio=False)
+        source.dimensions = (3840, 2160)
+        images, _, count, fps = viggle.CRTP_VigglePrepareVideo().prepare(
+            source, 124, width=864, height=480)
+        self.assertEqual((count, fps), (124, 24.0))
+        self.assertEqual(tuple(images.shape), (124, 480, 832, 3))
+        self.assertLessEqual(len(source.converted), 124)
+        self.assertTrue(all((w, h) == (832, 480) for _, w, h in source.converted))
+        torch.testing.assert_close(images[:, 0, 0, 0], torch.floor(torch.arange(124) * 60 / 24 + .5))
+
+    def test_source_fps_validation_precedes_decoding(self):
         for fps in (0, float("nan"), 241):
             source = LazyVideo()
             source.fps = fps
@@ -122,12 +178,37 @@ class PrepareTests(unittest.TestCase):
 
     def test_variable_frame_timestamps_control_resampling(self):
         source = LazyVideo(12, 24, audio=False)
-        timestamps = torch.tensor([0, .02, .04, .06, .08, .10, .12, .20, .28, .36, .42, .46], dtype=torch.float64)
-        with patch.object(viggle, "_presentation_timeline", return_value=(timestamps, .5)):
-            images, _, count, _ = viggle.CRTP_VigglePrepareVideo().prepare(source)
-        self.assertEqual(count, 12)
+        source.timestamps = [0, .02, .04, .06, .08, .10, .12, .20, .28, .36, .42, .46]
+        images, _, count, fps = viggle.CRTP_VigglePrepareVideo().prepare(source)
+        self.assertEqual((count, fps), (12, 24.0))
         self.assertEqual(images[3, 0, 0, 0], 6)  # .125 sec, nearest PTS .12
         self.assertEqual(images[6, 0, 0, 0], 8)  # .25 sec, nearest PTS .28
+
+    def test_small_source_is_not_upscaled_and_high_fps_is_resampled(self):
+        source = LazyVideo(120, 120, audio=False)
+        source.dimensions = (320, 180)
+        images, _, count, fps = viggle.CRTP_VigglePrepareVideo().prepare(source, 24, width=864, height=480)
+        self.assertEqual(tuple(images.shape), (24, 160, 320, 3))
+        self.assertEqual((count, fps), (24, 24.0))
+        torch.testing.assert_close(images[:, 0, 0, 0], torch.arange(24).float() * 5)
+
+    def test_mismatched_aspect_fits_within_target_without_cropping(self):
+        source = LazyVideo(24, 24, audio=False)
+        source.dimensions = (1080, 1920)
+        images, _, _, _ = viggle.CRTP_VigglePrepareVideo().prepare(source, 5, width=864, height=480)
+        self.assertEqual(tuple(images.shape), (5, 480, 256, 3))
+
+    def test_display_rotation_is_applied_after_small_frame_conversion(self):
+        frame = FakeFrame(1, 0, 24, (1920, 1080), [])
+        frame.rotation = 90
+        image = viggle._frame_image(frame, 256, 480)
+        self.assertEqual(tuple(image.shape), (480, 256, 3))
+        self.assertEqual(frame.converted, [(1, 480, 256)])
+
+    def test_optional_size_inputs_preserve_old_workflow_contract(self):
+        optional = viggle.CRTP_VigglePrepareVideo.INPUT_TYPES()["optional"]
+        self.assertEqual(optional["width"][1]["default"], 864)
+        self.assertEqual(optional["height"][1]["default"], 480)
 
 
 class ContractTests(unittest.TestCase):
@@ -199,8 +280,8 @@ class ContractTests(unittest.TestCase):
                    "comfy_extras": extras, "comfy_extras.nodes_minimax_h3": h3}
         with patch.dict(sys.modules, modules):
             cond, latent = viggle.CRTP_ViggleAnimateConditioning().build(
-                torch.zeros(23, 18, 32, 3), torch.zeros(1, 8, 8, 3), text_cond(), vae, 64, 32)
-        self.assertEqual(calls, [(23, 32, 64, 3), (1, 32, 32, 3)])
+                torch.zeros(23, 32, 32, 3), torch.zeros(1, 8, 8, 3), text_cond(), vae, 64, 32)
+        self.assertEqual(calls, [(23, 32, 32, 3), (1, 32, 32, 3)])
         refs = cond[0][1]["minimax_refs"]
         self.assertEqual([r["kind"] for r in refs], ["video", "image"])
         self.assertEqual(refs[0]["ref_audio_t"], 0)

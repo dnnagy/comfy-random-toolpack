@@ -18,7 +18,6 @@ import folder_paths
 
 FPS = 24
 MAX_FRAMES = 362
-MAX_DECODE_PIXELS = 512_000_000
 DEFAULT_RESOLUTION = "864x480 (landscape, 0.4 MP)"
 folder_paths.add_model_folder_path("text_cond", os.path.join(folder_paths.models_dir, "text_cond"))
 
@@ -96,31 +95,96 @@ def _trim_audio(audio, duration):
     return {"waveform": result, "sample_rate": rate}
 
 
-def _presentation_timeline(video, source_fps, max_source_frames):
-    """Read frame timestamps without materializing full-resolution image arrays.
+def _driving_size(source_width, source_height, width, height):
+    """Fit inside both the selected canvas and source; never upscale a driver.
 
-    Native get_components discards PTS. A bounded timing pass lets us retain
-    its color/rotation/audio handling while correctly resampling VFR footage.
+    H3 requires a 32-pixel grid. Round down to stay within both bounds; the
+    rounding changes aspect by at most 31 pixels per axis, without cropping.
+    """
+    _aspect(source_width, source_height)
+    if min(source_width, source_height) < 32:
+        raise ValueError("Viggle-Animate: driving video dimensions must be at least 32 pixels.")
+    scale = min(1.0, width / source_width, height / source_height)
+    rw = math.floor(source_width * scale / 32 + 1e-9) * 32
+    rh = math.floor(source_height * scale / 32 + 1e-9) * 32
+    if min(rw, rh) < 32:
+        raise ValueError("Viggle-Animate: selected resolution is too small for the driving video's aspect ratio.")
+    return rw, rh
+
+
+def _frame_image(frame, width, height):
+    """Scale in libswscale before any NumPy/RGB tensor allocation.
+
+    Match native ComfyUI's float RGB conversion and display rotation. Only a
+    selected frame is converted; high-FPS skipped frames remain decoder frames.
+    """
+    import numpy as np
+
+    rotation = int(round(frame.rotation // 90)) % 4 if frame.rotation else 0
+    raw_width, raw_height = (height, width) if rotation % 2 else (width, height)
+    image_format = "rgb24" if frame.format.name in (
+        "yuvj420p", "yuvj422p", "yuvj444p", "rgb24", "rgba", "pal8"
+    ) else "gbrpf32le"
+    reduced = frame.reformat(width=raw_width, height=raw_height, format=image_format,
+                             interpolation="LANCZOS")
+    array = reduced.to_ndarray()
+    if rotation:
+        array = np.rot90(array, k=rotation, axes=(0, 1))
+    result = torch.from_numpy(np.ascontiguousarray(array)).float()
+    if image_format == "rgb24":
+        result.div_(255.0)
+    return result
+
+
+def _decode_resampled_video(video, source_fps, duration, max_frames, width, height):
+    """Stream adjacent PTS frames, converting only bounded 24 fps output.
+
+    Keep at most two decoded source frames and one resized RGB frame in
+    addition to the output tensor. Never materialize a source-resolution clip.
     """
     import av
 
-    if not hasattr(video, "get_active_trim_window"):
+    if not hasattr(video, "get_active_trim_window") or not hasattr(video, "get_stream_source"):
         raise ValueError("Viggle-Animate: use native LoadVideo for timestamp-aware video preparation.")
-    start_time, duration = video.get_active_trim_window()
+    # Native VideoCrop keeps its rectangle private. Do not silently ignore it
+    # when streaming the underlying file; this workflow uses uncropped LoadVideo.
+    if getattr(video, "_VideoFromFile__crop", None) is not None:
+        raise ValueError("Viggle-Animate: use an uncropped LoadVideo input; select output resolution on this node.")
+    start_time, _ = video.get_active_trim_window()
     source = video.get_stream_source()
     if hasattr(source, "seek"):
         source.seek(0)
-    timestamps = []
+    previous = None
+    previous_time = None
     last_duration = 1 / source_fps
     following_timestamp = None
+    output = None
+    written = 0
+    converted = None
+    target_width = target_height = None
+
+    def write_before(boundary, frame):
+        nonlocal output, written, converted, target_width, target_height
+        while written < max_frames and written / FPS < boundary - 1e-9:
+            if converted is None:
+                rotation = int(round(frame.rotation // 90)) % 4 if frame.rotation else 0
+                sw, sh = (frame.height, frame.width) if rotation % 2 else (frame.width, frame.height)
+                rw, rh = _driving_size(sw, sh, width, height)
+                if output is None:
+                    target_width, target_height = rw, rh
+                    output = torch.empty((max_frames, rh, rw, 3), dtype=torch.float32)
+                elif (rw, rh) != (target_width, target_height):
+                    raise ValueError("Viggle-Animate: source dimensions change within the selected clip.")
+                converted = _frame_image(frame, rw, rh)
+            output[written].copy_(converted)
+            written += 1
+
     with av.open(source, mode="r") as container:
         if not container.streams.video:
             raise ValueError("Viggle-Animate: input has no video stream.")
         stream = container.streams.video[0]
-        start_pts = int(start_time / stream.time_base)
-        end_pts = int((start_time + duration) / stream.time_base)
-        if start_pts:
-            container.seek(start_pts, stream=stream)
+        if start_time:
+            container.seek(int(start_time / stream.time_base), stream=stream)
         done = False
         for packet in container.demux(stream):
             if done:
@@ -132,29 +196,33 @@ def _presentation_timeline(video, source_fps, max_source_frames):
             for frame in frames:
                 if frame.pts is None:
                     raise ValueError("Viggle-Animate: source frames need valid presentation timestamps.")
-                if frame.pts < start_pts:
+                timestamp = float(frame.pts * (frame.time_base or stream.time_base)) - start_time
+                if timestamp < -1e-9:
                     continue
-                if duration and frame.pts >= end_pts:
-                    following_timestamp = float(frame.pts * stream.time_base) - start_time
+                if timestamp >= duration - 1e-9:
+                    following_timestamp = timestamp
                     done = True
                     break
-                timestamp = float(frame.pts * stream.time_base) - start_time
-                if timestamps and timestamp <= timestamps[-1]:
-                    raise ValueError("Viggle-Animate: source presentation timestamps must be strictly increasing.")
-                timestamps.append(timestamp)
-                if len(timestamps) > max_source_frames:
-                    raise ValueError("Viggle-Animate: actual source frames exceed the 512-million-pixel decode budget; resize or shorten the clip.")
+                if previous_time is not None:
+                    if timestamp <= previous_time:
+                        raise ValueError("Viggle-Animate: source presentation timestamps must be strictly increasing.")
+                    # At exact halfway ties choose the newer frame, as in the
+                    # previous timestamp-aware nearest-neighbor implementation.
+                    write_before(min(duration, (previous_time + timestamp) / 2), previous)
                 frame_duration = getattr(frame, "duration", 0)
                 if frame_duration:
-                    last_duration = float(frame_duration * stream.time_base)
-                elif len(timestamps) > 1:
-                    last_duration = timestamps[-1] - timestamps[-2]
-    if not timestamps:
-        raise ValueError("Viggle-Animate: the selected clip contains no video frames.")
-    # A VFR frame stays on screen until the next presentation timestamp. The
-    # codec's nominal frame.duration can be shorter than that interval.
-    video_end = following_timestamp if following_timestamp is not None else timestamps[-1] + last_duration
-    return torch.tensor(timestamps, dtype=torch.float64), video_end
+                    last_duration = float(frame_duration * (frame.time_base or stream.time_base))
+                elif previous_time is not None:
+                    last_duration = timestamp - previous_time
+                previous, previous_time, converted = frame, timestamp, None
+        if previous is None:
+            raise ValueError("Viggle-Animate: the selected clip contains no video frames.")
+        video_end = following_timestamp if following_timestamp is not None else previous_time + last_duration
+        count = min(max_frames, math.floor(min(duration, video_end) * FPS + 1e-7))
+        if count < 5:
+            raise ValueError("Viggle-Animate: the selected clip must contain at least 5 frames at 24 fps.")
+        write_before(count / FPS, previous)
+    return output[:count], count
 
 
 def _aligned_source_audio(video, duration):
@@ -232,9 +300,12 @@ class CRTP_VigglePrepareVideo:
             "max_frames": ("INT", {"default": 124, "min": 5, "max": MAX_FRAMES, "step": 1}),
             "start_time": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 100000.0, "step": 0.01}),
             "preserve_audio": ("BOOLEAN", {"default": True}),
+        }, "optional": {
+            "width": ("INT", {"default": 864, "min": 32, "max": 1536, "step": 32}),
+            "height": ("INT", {"default": 480, "min": 32, "max": 1536, "step": 32}),
         }}
 
-    def prepare(self, video, max_frames=124, start_time=0.0, preserve_audio=True):
+    def prepare(self, video, max_frames=124, start_time=0.0, preserve_audio=True, width=864, height=480):
         max_frames = _integer(max_frames, "max_frames", 5, MAX_FRAMES)
         start_time = float(start_time)
         if not math.isfinite(start_time) or start_time < 0:
@@ -244,8 +315,7 @@ class CRTP_VigglePrepareVideo:
         source_fps = float(video.get_frame_rate())
         if not math.isfinite(source_fps) or not 0 < source_fps <= 240:
             raise ValueError("Viggle-Animate: source FPS must be positive and at most 240.")
-        source_width, source_height = video.get_dimensions()
-        _aspect(source_width, source_height)
+        width, height = _canvas(width, height)
         # Native ComfyUI VideoFromFile implements this as a lazy bounded view.
         # Do not decode the original VIDEO and then slice the image tensor.
         clipped = video.as_trimmed(start_time, max_frames / FPS, strict_duration=False)
@@ -254,36 +324,9 @@ class CRTP_VigglePrepareVideo:
         duration = min(float(clipped.get_duration()), max_frames / FPS)
         if not math.isfinite(duration) or duration <= 0:
             raise ValueError("Viggle-Animate: selected video duration must be positive.")
-        decode_frames = math.ceil(duration * source_fps) + 1
-        if source_width * source_height * decode_frames > MAX_DECODE_PIXELS:
-            raise ValueError(
-                "Viggle-Animate: selected source exceeds the 512-million-pixel decode budget. "
-                "Resize the driving video, reduce its FPS, or select fewer frames before running."
-            )
-        timestamps, video_end = _presentation_timeline(
-            clipped, source_fps, MAX_DECODE_PIXELS // (source_width * source_height)
+        normalized, count = _decode_resampled_video(
+            clipped, source_fps, duration, max_frames, width, height
         )
-        components = clipped.get_components()
-        images = components.images
-        _images(images, "driving video")
-        source_fps = float(components.frame_rate)
-        if not math.isfinite(source_fps) or not 0 < source_fps <= 240:
-            raise ValueError("Viggle-Animate: source FPS must be positive and at most 240.")
-        if len(timestamps) != int(images.shape[0]):
-            raise ValueError("Viggle-Animate: timing and image decode produced different frame counts; re-encode the source clip.")
-        # floor avoids extending a partial final frame interval; tolerate only
-        # floating-point representation noise, not another frame's duration.
-        count = min(max_frames, math.floor(min(duration, video_end) * FPS + 1e-7))
-        if count < 5:
-            raise ValueError("Viggle-Animate: the selected clip must contain at least 5 frames at 24 fps.")
-        positions = torch.arange(count, dtype=torch.float64) / FPS
-        after = torch.searchsorted(timestamps, positions).clamp_(0, len(timestamps) - 1)
-        before = (after - 1).clamp_(0)
-        # On an exact tie choose the newer frame, matching nearest-neighbor
-        # CFR resampling. PTS, rather than average FPS, drives this selection.
-        indices = torch.where(positions - timestamps[before] < timestamps[after] - positions - 1e-9, before, after)
-        indices = indices.to(device=images.device)
-        normalized = images.index_select(0, indices)[..., :3]
         # Native ComfyUI's audio decode can apply the stream time base to a
         # resampled frame's PTS. Read frame.time_base explicitly for alignment.
         audio = _aligned_source_audio(clipped, count / FPS) if preserve_audio else None
@@ -338,7 +381,7 @@ class CRTP_ViggleAnimateConditioning:
         embeds, tags = _text_conditioning(text_cond)
         short_edge = min(width, height)
         vh, vw = cond_video.shape[1:3]
-        rw, rh = _reference_size(vw, vh, short_edge, width * height)
+        rw, rh = _driving_size(vw, vh, width, height)
         ih, iw = ref_image.shape[1:3]
         # The finetune uses an uncapped still at the target short edge.
         # The 1:4..4:1 check bounds it to four times short_edge squared.

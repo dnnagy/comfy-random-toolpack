@@ -10,6 +10,8 @@ import importlib.util
 import numpy as np
 from pathlib import Path
 import tempfile
+import subprocess
+from unittest.mock import patch
 import torch
 from types import SimpleNamespace
 
@@ -54,7 +56,9 @@ with tempfile.TemporaryDirectory() as directory:
             output.mux(packet)
 
     source = InputImpl.VideoFromFile(path)
-    images, audio, count, fps = viggle.CRTP_VigglePrepareVideo().prepare(source, 36, 1.5, True)
+    with patch.object(InputImpl.VideoFromFile, "get_components", side_effect=AssertionError("No full source tensor decode")):
+        images, audio, count, fps = viggle.CRTP_VigglePrepareVideo().prepare(source, 36, 1.5, True)
+    assert tuple(images.shape) == (36, 32, 32, 3)  # Never upscale the driver.
     assert (count, fps) == (36, 24.0), (count, fps)
     selected_times = [(i, t) for i, t in enumerate(times) if 1.5 <= t < 3]
     expected = [min(selected_times, key=lambda x: (abs(x[1] - (1.5 + k / 24)), -x[1]))[0] for k in range(count)]
@@ -84,3 +88,47 @@ with tempfile.TemporaryDirectory() as directory:
     assert saved.get_frame_count() == 36
     assert float(saved.get_frame_rate()) == 24
     print("PASS: native H3 conditioning/NestedTensor and CreateVideo/save 24fps roundtrip")
+
+    # Phone-style display rotation and a source width that is not 32 aligned.
+    # 60 fps input must be downscaled before floating RGB conversion and return
+    # exactly 24 fps. A rotated MP4 also exercises actual decoder side data.
+    source_path = str(Path(directory) / "phone-landscape.mp4")
+    rotated_path = str(Path(directory) / "phone-portrait.mp4")
+    pixels = np.zeros((406, 702, 3), dtype=np.uint8)
+    pixels[:203, :351] = (255, 0, 0)
+    pixels[:203, 351:] = (0, 255, 0)
+    pixels[203:, :351] = (0, 0, 255)
+    pixels[203:, 351:] = (255, 255, 255)
+    with av.open(source_path, mode="w") as output:
+        stream = output.add_stream("libx264", rate=60)
+        stream.width, stream.height = 702, 406
+        stream.pix_fmt = "yuv420p"
+        stream.options = {"preset": "ultrafast", "crf": "12"}
+        for index in range(30):
+            frame = av.VideoFrame.from_ndarray(pixels, format="rgb24")
+            frame.pts = index
+            frame.time_base = Fraction(1, 60)
+            for packet in stream.encode(frame):
+                output.mux(packet)
+        for packet in stream.encode():
+            output.mux(packet)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", source_path, "-c", "copy",
+                    "-metadata:s:v:0", "rotate=90", rotated_path], check=True)
+    with av.open(rotated_path) as container:
+        probe = next(container.decode(video=0))
+        rotation = int(round(probe.rotation // 90)) % 4
+        assert rotation % 2, probe.rotation
+    with patch.object(InputImpl.VideoFromFile, "get_components", side_effect=AssertionError("No full source tensor decode")):
+        resized, silent, count, fps = viggle.CRTP_VigglePrepareVideo().prepare(
+            InputImpl.VideoFromFile(rotated_path), 12, preserve_audio=False, width=64, height=128)
+    assert (count, fps) == (12, 24.0)
+    assert tuple(resized.shape) == (12, 96, 64, 3), resized.shape
+    assert silent is None
+    expected_pixels = np.rot90(pixels, k=rotation)
+    corners = ((.25, .25), (.25, .75), (.75, .25), (.75, .75))
+    for y, x in corners:
+        observed = resized[0, int(y * 96), int(x * 64)]
+        expected = torch.from_numpy(expected_pixels[int(y * 702), int(x * 406)].copy()).float() / 255
+        torch.testing.assert_close(observed, expected, atol=.04, rtol=0)
+    assert torch.isfinite(resized).all()
+    print("PASS: native 60fps phone MP4 -> resized24fps, rotation preserved, non-aligned source float RGB")

@@ -21,14 +21,20 @@ when decoding only the video stream and remuxing the driving video's audio.
 ## Wiring and recommended defaults
 
 1. Native `LoadVideo` → `CRTP_VigglePrepareVideo`: 124 frame cap, start time 0,
-   preserve audio enabled. The node creates a bounded lazy trim before decoding,
-   normalizes the frame timeline to 24 fps using actual presentation timestamps
-   (including variable-frame-rate sources), and returns images, aligned audio,
-   actual frame count, and 24 fps. Inputs shorter than five normalized frames
-   fail clearly. A bounded timing pass precedes native image/audio decoding;
-   it also checks actual source frame count against the decode budget. The cap
-   supports 5–362 frames; this is a single-shot workflow. Connect native LoadVideo
-   so that timestamps are available; arbitrary assembled VIDEO objects are rejected.
+   preserve audio enabled. Connect the selected resolution's width and height
+   to this node as well as the conditioning node. Optional size inputs default
+   to 864×480 for older workflows. It streams a bounded lazy trim, selects frames
+   using actual presentation timestamps (including VFR), and **always resamples
+   to 24 fps**. Only selected frames are resized and converted to RGB tensors;
+   the full-resolution source clip is never materialized in memory. The driving
+   dimensions fit inside both the selected canvas and the source, never upscale,
+   and round down to the H3 32-pixel grid. Display rotation is preserved, and
+   resizing keeps the source aspect ratio apart from grid rounding; no crop is
+   applied. Outputs are images, aligned audio, actual frame count, and 24 fps.
+   Inputs shorter than five normalized frames fail clearly. The cap supports
+   5–362 frames; this is a single-shot workflow. Connect an uncropped native
+   LoadVideo so timestamps are available; assembled/cropped VIDEO objects are
+   rejected rather than silently losing their transforms.
    Audio is decoded against each audio frame's own time base so nonzero start
    offsets and delayed audio tracks remain aligned with the video timeline.
 2. `CRTP_ViggleResolution` parses a `WIDTHxHEIGHT (optional label)` string into
@@ -39,8 +45,9 @@ when decoding only the video stream and remuxing the driving video's audio.
 4. `CRTP_ViggleAnimateConditioning` receives prepared frames, a reference still,
    frozen conditioning, video VAE, width, and height. It packs the driving video
    **before** the image, as required by the finetune. The driving video preserves
-   aspect ratio, targets the output short edge, is area capped, and rounds each
-   dimension to 32. The still preserves aspect ratio and targets the short edge
+   aspect ratio within the selected canvas and source bounds on a 32-pixel grid.
+   Prepared smaller driving frames are never upscaled by conditioning. The still
+   preserves aspect ratio and targets the short edge
    without an area cap, matching upstream; its aspect ratio is restricted to
    1:4–4:1 to bound its size. Use a repainted frame from the driving video with
    matching pose, framing, and background for the intended workflow.
@@ -58,13 +65,13 @@ when decoding only the video stream and remuxing the driving video's audio.
 Source audio is trimmed with the source video and muxed into the result; it is
 not an audio conditioning or lip-sync feature. Missing or disabled audio yields
 `None`, which native `CreateVideo` accepts. Short audio is padded with silence to
-the output duration. The source file's dimensions and FPS still affect decoding
-memory even though the selected time range and normalized frame count are bounded.
-Metadata is checked before decoding: source FPS must be at most 240, and the
-selected source frames may total at most 512 million pixels (roughly 6 GB of
-RGB float32 data before transient copies). Larger inputs fail with instructions
-to resize, reduce source FPS, or shorten the selected clip. For long clips,
-prepare the driving file at the intended output resolution before uploading.
+the output duration. Source FPS must be positive and at most 240. Source
+resolution and FPS affect streaming decode work, but no source-size pixel budget
+rejects otherwise valid 1080p/4K footage. RGB tensor memory is bounded by the
+selected resolution and 362-frame maximum; no source-sized frame batch or
+full-resolution RGB conversion is created. The video codec still needs a few
+source-sized decoder surfaces. At the maximum 1 MP and 362 frames, the float32
+RGB output alone can occupy about 4.6 GB; smaller defaults need less memory.
 
 ## Validation
 
@@ -78,4 +85,5 @@ With ComfyUI and its dependencies available, run
 `PYTHONPATH=/path/to/ComfyUI python tests/viggle_native_integration.py` for a CPU
 integration test. It creates a small variable-frame-rate file with seekable audio,
 checks exact 24 fps sampling and a nonzero audio start offset, exercises native
-H3/NestedTensor packing, and exports/reloads an MP4 with native CreateVideo.
+H3/NestedTensor packing, verifies high-FPS downscaling and phone display rotation
+with a non-aligned source width, and exports/reloads an MP4 with native CreateVideo.
