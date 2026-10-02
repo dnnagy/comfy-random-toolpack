@@ -322,3 +322,9 @@ All nodes in this pack use the `CRTP_` prefix for namespacing.
 ## License
 
 MIT
+
+## Viggle-Animate
+
+Native MiniMax H3 helpers for bounded 24 fps driving video, frozen text conditioning,
+video-first reference packing, distilled sigma schedules, and output trimming.
+See [Viggle-Animate setup and node wiring](docs/viggle.md).
