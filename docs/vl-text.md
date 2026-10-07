@@ -3,13 +3,13 @@
 `CRTP_VLTextGenerate` has a model dropdown:
 
 - `Qwen3-VL-8B-Instruct`: uses a lazily connected native ComfyUI CLIP loader.
-- `Qwen3.8-27B-UD-Q5_K_M`: runs a local llama.cpp server with a GGUF language
+- `Qwen3.8-27B-HauhauCS-Q5_K_P`: runs a local llama.cpp server with a GGUF language
   model **and its matching vision projector**. The CLIP branch is not evaluated.
 
-Put these files under `ComfyUI/models/llm/Qwen3.8-27B-UD-Q5_K_M/`:
+Put these files under `ComfyUI/models/llm/Qwen3.8-27B-HauhauCS-Q5_K_P/`:
 
-- `Qwen3.8-27B-UD-Q5_K_M.gguf`
-- `mmproj-F16.gguf`
+- `Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-Q5_K_P.gguf`
+- `mmproj-Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-BF16.gguf`
 
 Use the same revision of `unsloth/Qwen3.8-27B-GGUF` for both. The `gguf_model`
 and `mmproj` widgets also accept absolute paths, or paths relative to additional
@@ -52,3 +52,5 @@ For an opt-in inference test with synthetic images, run
 `tests/vl_native_integration.py --model /absolute/model.gguf --mmproj /absolute/mmproj.gguf`.
 Use `--images 10` to exercise the maximum image batch. This test loads the real
 weights and requires enough GPU/unified memory; it is not part of the CPU suite.
+
+The HauhauCS option uses `HauhauCS/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTP-GGUF` with the matching BF16 projector. Standard generation is used; embedded MTP/FastMTP are not enabled. The legacy UD selector remains accepted for saved workflows with explicit file paths.

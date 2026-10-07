@@ -30,6 +30,17 @@ class VLTests(unittest.TestCase):
         self.assertEqual(clip.generate.call_args.kwargs['temperature'], .3)
         self.assertFalse(clip.generate.call_args.kwargs['mtp'])
 
+    def test_hauhau_selector_and_saved_ud_workflows_keep_the_gguf_path(self):
+        choices = vl.CRTP_VLTextGenerate.INPUT_TYPES()['required']['model'][0]
+        self.assertIn(vl.GGUF, choices)
+        self.assertIn(vl.LEGACY_GGUF, choices)
+        for model in (vl.GGUF, vl.LEGACY_GGUF):
+            self.assertEqual(vl.CRTP_VLTextGenerate().check_lazy_status(model), [])
+            with self.assertRaisesRegex(ValueError, 'matching mmproj'):
+                vl.CRTP_VLTextGenerate().generate(model, 'question', object(), mmproj='')
+        self.assertIn('HauhauCS', vl.MODEL_FILE)
+        self.assertTrue(vl.PROJECTOR_FILE.endswith('-BF16.gguf'))
+
     def test_missing_projector_or_raw_template_is_rejected(self):
         node = vl.CRTP_VLTextGenerate()
         for kw in ({'mmproj': ''}, {'use_default_template': False}):

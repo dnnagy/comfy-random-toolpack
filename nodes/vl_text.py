@@ -24,9 +24,10 @@ import urllib.error
 import urllib.request
 
 NATIVE = "Qwen3-VL-8B-Instruct"
-GGUF = "Qwen3.8-27B-UD-Q5_K_M"
-MODEL_FILE = "Qwen3.8-27B-UD-Q5_K_M/Qwen3.8-27B-UD-Q5_K_M.gguf"
-PROJECTOR_FILE = "Qwen3.8-27B-UD-Q5_K_M/mmproj-F16.gguf"
+GGUF = "Qwen3.8-27B-HauhauCS-Q5_K_P"
+LEGACY_GGUF = "Qwen3.8-27B-UD-Q5_K_M"
+MODEL_FILE = "Qwen3.8-27B-HauhauCS-Q5_K_P/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-Q5_K_P.gguf"
+PROJECTOR_FILE = "Qwen3.8-27B-HauhauCS-Q5_K_P/mmproj-Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-BF16.gguf"
 _LOCK = threading.Lock()
 
 
@@ -196,7 +197,7 @@ class CRTP_VLTextGenerate:
     @classmethod
     def INPUT_TYPES(cls):
         return {"required": {
-            "model": ([NATIVE, GGUF], {"default": NATIVE}),
+            "model": ([NATIVE, GGUF, LEGACY_GGUF], {"default": NATIVE}),
             "prompt": ("STRING", {"multiline": True, "default": ""}),
             "image": ("IMAGE",),
             "max_length": ("INT", {"default": 512, "min": 1, "max": 4096}),
@@ -227,7 +228,7 @@ class CRTP_VLTextGenerate:
                  repetition_penalty=1.05, seed=0, presence_penalty=0.0,
                  thinking=False, use_default_template=True,
                  gguf_model=MODEL_FILE, mmproj=PROJECTOR_FILE, clip=None):
-        if model not in (NATIVE, GGUF):
+        if model not in (NATIVE, GGUF, LEGACY_GGUF):
             raise ValueError(f"Unknown VL model: {model}")
         if sampling_mode not in ("on", "off"):
             raise ValueError("Sampling mode must be on or off")
