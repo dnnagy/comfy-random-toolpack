@@ -6,6 +6,7 @@ Set CRTP_LLAMA_SERVER when llama-server is not on PATH. Requires torch, numpy, P
 import argparse
 import importlib.util
 import json
+import re
 from pathlib import Path
 import sys
 import time
@@ -52,7 +53,12 @@ def main():
     print(json.dumps({'answer': answer, 'elapsed_seconds': round(time.monotonic() - start, 2),
                       'images': args.images}, indent=2))
     assert all(word in answer.lower() for word in ('red', 'square', 'blue', 'circle')), answer
-    assert len([line for line in answer.splitlines() if line.strip()]) == args.images, answer
+    # A harmless introductory sentence is allowed; verify each numbered image.
+    lines = re.findall(r'^\s*(\d+)[.)]\s+(.+)$', answer, re.MULTILINE)
+    assert [int(number) for number, _ in lines] == list(range(1, args.images + 1)), answer
+    for index, (_, line) in enumerate(lines):
+        expected = ('red', 'square') if index % 2 == 0 else ('blue', 'circle')
+        assert all(word in line.lower() for word in expected), answer
 
 
 if __name__ == '__main__':
