@@ -41,6 +41,27 @@ class VLTests(unittest.TestCase):
         self.assertIn('HauhauCS', vl.MODEL_FILE)
         self.assertTrue(vl.PROJECTOR_FILE.endswith('-BF16.gguf'))
 
+    def test_gemma_selects_its_own_projector_without_loading_native_clip(self):
+        node = vl.CRTP_VLTextGenerate()
+        self.assertIn(vl.GEMMA, node.INPUT_TYPES()['required']['model'][0])
+        self.assertEqual(node.check_lazy_status(vl.GEMMA), [])
+        with self.assertRaisesRegex(ValueError, 'matching mmproj'):
+            node.generate(vl.GEMMA, 'question', object(), gemma_mmproj='')
+        with patch.object(vl, '_resolve_gguf', side_effect=RuntimeError('resolved')) as resolve:
+            with self.assertRaisesRegex(RuntimeError, 'resolved'):
+                node.generate(vl.GEMMA, 'question', object(), gguf_model='qwen', mmproj='qwen-projector')
+            resolve.assert_called_once_with(vl.GEMMA_MODEL_FILE)
+        mm = types.ModuleType('comfy.model_management')
+        mm.unload_all_models = Mock(); mm.soft_empty_cache = Mock()
+        comfy = types.ModuleType('comfy'); comfy.model_management = mm
+        with patch.dict('sys.modules', {'comfy': comfy, 'comfy.model_management': mm}), \
+             patch.object(vl, '_interrupt'), patch.object(vl, '_resolve_gguf', side_effect=lambda x:x), \
+             patch.object(vl, '_server_binary'), patch.object(vl, '_image_content', return_value=[]), \
+             patch.object(vl, '_server') as server, patch.object(vl, '_complete', return_value='gemma answer'):
+            server.return_value.__enter__.return_value = ('url', 'token')
+            self.assertEqual(node.generate(vl.GEMMA, 'question', object()), ('gemma answer',))
+            server.assert_called_once_with(vl.GEMMA_MODEL_FILE, vl.GEMMA_PROJECTOR_FILE)
+
     def test_missing_projector_or_raw_template_is_rejected(self):
         node = vl.CRTP_VLTextGenerate()
         for kw in ({'mmproj': ''}, {'use_default_template': False}):

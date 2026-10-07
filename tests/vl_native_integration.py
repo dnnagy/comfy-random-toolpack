@@ -16,6 +16,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model', required=True)
     parser.add_argument('--mmproj', required=True)
+    parser.add_argument('--selector', default='Qwen3.8-27B-HauhauCS-Q5_K_P')
     parser.add_argument('--images', type=int, choices=(2, 10), default=2)
     args = parser.parse_args()
     import numpy as np
@@ -43,10 +44,11 @@ def main():
             draw.ellipse((160, 160, 608, 608), fill='blue')
         images.append(torch.from_numpy(np.array(image).astype(np.float32) / 255))
     start = time.monotonic()
-    answer = vl.CRTP_VLTextGenerate().generate(vl.GGUF,
+    answer = vl.CRTP_VLTextGenerate().generate(args.selector,
         'Identify the shape and color in each image. Answer in numbered lines, one per image.',
         torch.stack(images), max_length=256,
-        gguf_model=str(Path(args.model).resolve()), mmproj=str(Path(args.mmproj).resolve()))[0]
+        gguf_model=str(Path(args.model).resolve()), mmproj=str(Path(args.mmproj).resolve()),
+        gemma_gguf_model=str(Path(args.model).resolve()), gemma_mmproj=str(Path(args.mmproj).resolve()))[0]
     print(json.dumps({'answer': answer, 'elapsed_seconds': round(time.monotonic() - start, 2),
                       'images': args.images}, indent=2))
     assert all(word in answer.lower() for word in ('red', 'square', 'blue', 'circle')), answer

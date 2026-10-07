@@ -54,3 +54,15 @@ Use `--images 10` to exercise the maximum image batch. This test loads the real
 weights and requires enough GPU/unified memory; it is not part of the CPU suite.
 
 The HauhauCS option uses `HauhauCS/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTP-GGUF` with the matching BF16 projector. Standard generation is used; embedded MTP/FastMTP are not enabled. The legacy UD selector remains accepted for saved workflows with explicit file paths.
+
+## Gemma 4 E4B
+
+The `Gemma-4-E4B-HauhauCS-Q8_K_P` selector uses HauhauCS's Q8_K_P model
+and matching FP16 mmproj from
+https://huggingface.co/HauhauCS/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive.
+Install both under `models/llm/Gemma-4-E4B-HauhauCS-Q8_K_P/`.
+Optional `gemma_gguf_model` and `gemma_mmproj` fields override these paths.
+The Qwen path fields remain independent, so changing the selector also switches
+the projector. Existing saved Qwen graphs require no new fields.
+Image batching, chat-template handling, sampling and resizing remain shared.
+This node exposes image/text inputs; audio input is not integrated.

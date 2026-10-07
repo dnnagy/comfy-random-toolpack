@@ -25,6 +25,9 @@ import urllib.request
 
 NATIVE = "Qwen3-VL-8B-Instruct"
 GGUF = "Qwen3.8-27B-HauhauCS-Q5_K_P"
+GEMMA = "Gemma-4-E4B-HauhauCS-Q8_K_P"
+GEMMA_MODEL_FILE = "Gemma-4-E4B-HauhauCS-Q8_K_P/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q8_K_P.gguf"
+GEMMA_PROJECTOR_FILE = "Gemma-4-E4B-HauhauCS-Q8_K_P/mmproj-Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-f16.gguf"
 LEGACY_GGUF = "Qwen3.8-27B-UD-Q5_K_M"
 MODEL_FILE = "Qwen3.8-27B-HauhauCS-Q5_K_P/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-Q5_K_P.gguf"
 PROJECTOR_FILE = "Qwen3.8-27B-HauhauCS-Q5_K_P/mmproj-Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-BF16.gguf"
@@ -197,7 +200,7 @@ class CRTP_VLTextGenerate:
     @classmethod
     def INPUT_TYPES(cls):
         return {"required": {
-            "model": ([NATIVE, GGUF, LEGACY_GGUF], {"default": NATIVE}),
+            "model": ([NATIVE, GGUF, GEMMA, LEGACY_GGUF], {"default": NATIVE}),
             "prompt": ("STRING", {"multiline": True, "default": ""}),
             "image": ("IMAGE",),
             "max_length": ("INT", {"default": 512, "min": 1, "max": 4096}),
@@ -213,7 +216,9 @@ class CRTP_VLTextGenerate:
             "use_default_template": ("BOOLEAN", {"default": True, "tooltip": "GGUF vision requires the model chat template."}),
             "gguf_model": ("STRING", {"default": MODEL_FILE}),
             "mmproj": ("STRING", {"default": PROJECTOR_FILE}),
-        }, "optional": {"clip": ("CLIP", {"lazy": True})}}
+        }, "optional": {"clip": ("CLIP", {"lazy": True}),
+            "gemma_gguf_model": ("STRING", {"default": GEMMA_MODEL_FILE}),
+            "gemma_mmproj": ("STRING", {"default": GEMMA_PROJECTOR_FILE})}}
 
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("generated_text",)
@@ -227,8 +232,9 @@ class CRTP_VLTextGenerate:
                  temperature=0.7, top_k=64, top_p=0.95, min_p=0.05,
                  repetition_penalty=1.05, seed=0, presence_penalty=0.0,
                  thinking=False, use_default_template=True,
-                 gguf_model=MODEL_FILE, mmproj=PROJECTOR_FILE, clip=None):
-        if model not in (NATIVE, GGUF, LEGACY_GGUF):
+                 gguf_model=MODEL_FILE, mmproj=PROJECTOR_FILE, clip=None,
+                 gemma_gguf_model=GEMMA_MODEL_FILE, gemma_mmproj=GEMMA_PROJECTOR_FILE):
+        if model not in (NATIVE, GGUF, GEMMA, LEGACY_GGUF):
             raise ValueError(f"Unknown VL model: {model}")
         if sampling_mode not in ("on", "off"):
             raise ValueError("Sampling mode must be on or off")
@@ -243,7 +249,9 @@ class CRTP_VLTextGenerate:
                 seed=seed, mtp=False)
             return (clip.decode(generated),)
         if not use_default_template:
-            raise ValueError("Qwen3.8 GGUF vision requires 'Use model chat template' enabled")
+            raise ValueError("GGUF vision requires 'Use model chat template' enabled")
+        if model == GEMMA:
+            gguf_model, mmproj = gemma_gguf_model, gemma_mmproj
         if not gguf_model or not mmproj:
             raise ValueError("Both the GGUF model and matching mmproj are required for vision")
         model_path, projector_path = _resolve_gguf(gguf_model), _resolve_gguf(mmproj)
