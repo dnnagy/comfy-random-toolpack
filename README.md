@@ -328,3 +328,8 @@ MIT
 Native MiniMax H3 helpers for bounded 24 fps driving video, frozen text conditioning,
 video-first reference packing, distilled sigma schedules, and output trimming.
 See [Viggle-Animate setup and node wiring](docs/viggle.md).
+
+## Vision-language generation
+
+Use **CRTP Vision Language · Model Selector** to choose native Qwen3-VL 8B or
+Qwen3.8 27B GGUF with its matching mmproj. See [setup and controls](docs/vl-text.md).
