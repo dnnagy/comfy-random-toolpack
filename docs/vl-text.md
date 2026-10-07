@@ -11,7 +11,7 @@ Put these files under `ComfyUI/models/llm/Qwen3.8-27B-HauhauCS-Q5_K_P/`:
 - `Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-Q5_K_P.gguf`
 - `mmproj-Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-BF16.gguf`
 
-Use the same revision of `unsloth/Qwen3.8-27B-GGUF` for both. The `gguf_model`
+Use the same revision of `HauhauCS/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTP-GGUF` for both. The `gguf_model`
 and `mmproj` widgets also accept absolute paths, or paths relative to additional
 `llm` roots configured in `extra_model_paths.yaml`. There is no text-only fallback
 if the projector is absent. The complete image batch (1–10 RGB images) is sent as
