@@ -1,0 +1,120 @@
+{
+  "id": "00000000-0000-0000-0000-000000000000",
+  "revision": 0,
+  "last_node_id": 2,
+  "last_link_id": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadAudio",
+      "pos": [
+        20,
+        100
+      ],
+      "size": [
+        282.798828125,
+        136
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "AUDIO",
+          "type": "AUDIO",
+          "links": [
+            1
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadAudio"
+      },
+      "widgets_values": [
+        "example.wav",
+        null,
+        null
+      ],
+      "widgets_values_named": {
+        "audio": "reference.wav",
+        "upload": ""
+      }
+    },
+    {
+      "id": 2,
+      "type": "CRTP_AudioWaveformEditor",
+      "pos": [
+        380,
+        100
+      ],
+      "size": [
+        860,
+        602
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "edited_audio",
+          "type": "AUDIO",
+          "links": null
+        },
+        {
+          "name": "removed_seconds",
+          "type": "FLOAT",
+          "links": null
+        },
+        {
+          "name": "edit_map",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CRTP_AudioWaveformEditor"
+      },
+      "widgets_values": [
+        "",
+        3,
+        false
+      ],
+      "widgets_values_named": {
+        "segments_json": "{\"version\":1,\"source_id\":\"d1094cfed7ee2e6f4e23d06c2ddf0669fb69b07d7e9c3e502e6e05c929fab932\",\"samples\":1554925,\"segments\":[{\"start\":0,\"end\":179046,\"enabled\":true},{\"start\":179046,\"end\":261954,\"enabled\":false},{\"start\":261954,\"end\":484218,\"enabled\":true},{\"start\":484218,\"end\":528318,\"enabled\":false},{\"start\":528318,\"end\":612990,\"enabled\":true},{\"start\":612990,\"end\":672084,\"enabled\":false},{\"start\":672084,\"end\":766458,\"enabled\":true},{\"start\":766458,\"end\":843192,\"enabled\":false},{\"start\":843192,\"end\":899640,\"enabled\":true},{\"start\":899640,\"end\":1115730,\"enabled\":false},{\"start\":1115730,\"end\":1183644,\"enabled\":true},{\"start\":1183644,\"end\":1246266,\"enabled\":false},{\"start\":1246266,\"end\":1338876,\"enabled\":true},{\"start\":1338876,\"end\":1399734,\"enabled\":false},{\"start\":1399734,\"end\":1486170,\"enabled\":true},{\"start\":1486170,\"end\":1554925,\"enabled\":false}]}",
+        "edge_fade_ms": 3,
+        "preview_only": false,
+        "audio_waveform": ""
+      }
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "AUDIO"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.85,
+      "offset": [
+        100,
+        100
+      ]
+    }
+  },
+  "version": 0.4
+}

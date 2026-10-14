@@ -308,7 +308,86 @@ prefer `CRTP_LazyLoadAudioSelect` (plain selector) over the upload variant.
 Pair `loaded` with `CRTP_LazyLatentFallback` to skip an expensive encode branch
 when the source is absent.
 
-## Installation
+### CRTP Viggle-Animate Nodes
+
+Native MiniMax H3 helpers for bounded 24 fps driving video, frozen text
+conditioning, video-first reference packing, distilled sigma schedules, and
+output trimming. Includes Resolution, Prepare Video, Frozen Text Conditioning,
+Animate Conditioning, Distilled Sigmas, and Trim Output nodes.
+See [Viggle-Animate setup and node wiring](docs/viggle.md).
+
+### CRTP Vision Language · Model Selector
+
+Generate text from images using native Qwen3-VL 8B, Qwen3.8 27B GGUF, or
+Gemma 4 E4B GGUF. GGUF options use a local llama.cpp runtime and the matching
+vision projector. See [model setup and controls](docs/vl-text.md).
+
+### CRTP Drama 3 Speech Nodes
+
+Local speech generation and reference voice cloning, with separate runtimes
+for Apple Silicon testing and NVIDIA CUDA workflows:
+
+| Node | Purpose |
+| --- | --- |
+| **CRTP Drama 3 · Generate (MLX / Mac)** | Runs `mlx-community/fish-audio-drama-3-4bit` on Apple Silicon. |
+| **CRTP Drama 3 · Generate (CUDA / 32 GB)** | Runs `darioooooo0o/drama-3-w4a16-32gb` through patched SGLang-Omni on NVIDIA Linux/WSL2. |
+| **CRTP Drama 3 · Speaker Reference** | Combines a recording, its exact transcript, and a speaker ID; chain nodes for multiple voices. |
+
+Both generators return standard ComfyUI AUDIO at 44.1 kHz. For a single cloned
+voice, connect `reference_audio`, enter its exact transcript in `reference_text`,
+and put the new speech in `text`. Target audio is not required. For multiple
+speakers, connect chained Speaker Reference nodes to `references` instead.
+
+MLX uses sentence chunks by default, normalizes reference levels, and retries a
+failed take once when it encounters a skipped chunk, frame limit, or sustained
+near-silence. These checks improve completion but do not verify every spoken word.
+Each generator uses an isolated runtime process and releases it after the run.
+Weights and dependencies are installed explicitly, never during node execution.
+
+**Verification:** MLX generation has been exercised on an M4 Max with 64 GB.
+The CUDA adapter has protocol and process-cleanup tests; actual RTX 5090 memory
+fit and GPU inference remain unverified. See the setup guide for runtime and
+CUDA requirements before downloading the checkpoint.
+
+- [Setup, reference preparation, controls, and validation](docs/drama3.md)
+- [MLX workflow](examples/drama3/Drama3-MLX.json) · [CUDA workflow](examples/drama3/Drama3-CUDA.json)
+- [MLX API prompt](examples/drama3/Drama3-MLX.api.json) · [CUDA API prompt](examples/drama3/Drama3-CUDA.api.json)
+
+### CRTP Audio Waveform Editor
+
+A LosslessCut-style editor for standard ComfyUI AUDIO, under **CRTP → audio**.
+It runs on the CPU and can prepare references for either MLX or CUDA, or edit
+speech after generation.
+
+- Drag across the waveform to select a range, split at the playhead, and drag
+  segment boundaries to refine cuts.
+- Enable or disable segments using their checkboxes; disabled sections stay
+  visible and can be restored. The source recording is never overwritten.
+- Mark quiet gaps with adjustable silence threshold, minimum duration, and
+  padding; review the suggested cuts before running.
+- Audition the original, selected range, or joined enabled sections. Includes
+  zoom, an expanded editor, keyboard controls, and session undo/redo.
+- Save cuts with the workflow. Changed input audio requires reviewing the cuts
+  again; optional short edge fades reduce clicks in the rendered output.
+
+```text
+Load Audio → Audio Waveform Editor → Drama 3 reference_audio
+                                  → Preview Audio / Save Audio
+```
+
+Click **Load waveform** to queue the editor and its upstream inputs without
+running downstream generators. Select gaps and click **Disable**, or use
+**Mark silence…**. Click **▶ Kept** to audition, then run the workflow normally
+to output the enabled sections joined in order. Outputs are `edited_audio`,
+`removed_seconds`, and an `edit_map` JSON string.
+
+If you remove only silence from a voice reference, keep its transcript unchanged.
+If you remove spoken words, update the transcript to match.
+
+[Usage guide and shortcuts](docs/audio-waveform-editor.md) ·
+[Example workflow](examples/audio-editor/waveform-editor.json)
+
+## Installation and updates
 
 Clone this repository into your ComfyUI `custom_nodes` directory:
 
@@ -317,19 +396,47 @@ cd ComfyUI/custom_nodes
 git clone https://github.com/dnnagy/comfy-random-toolpack.git
 ```
 
-All nodes in this pack use the `CRTP_` prefix for namespacing.
+To update an existing installation:
+
+```bash
+cd ComfyUI/custom_nodes/comfy-random-toolpack
+git pull --ff-only
+```
+
+Restart ComfyUI and refresh its browser page after installing or updating.
+All nodes use the `CRTP_` prefix for namespacing. The waveform editor uses
+ComfyUI's existing torch, NumPy, and soundfile dependencies; its browser UI is
+bundled with the pack.
+
+Drama 3 requires a separate runtime and checkpoint. From the toolpack directory,
+choose the setup command for your machine (requires `uv` and Git):
+
+```bash
+# Apple Silicon Mac
+python3 scripts/setup_drama3.py mlx --model-dir /absolute/path/to/fish-audio-drama-3-4bit
+
+# NVIDIA Linux/WSL2 worker with compatible CUDA development tools
+python3 scripts/setup_drama3.py cuda --model-dir /absolute/path/to/drama-3-w4a16-32gb
+```
+
+Set the generator's `model_path` to the downloaded directory. The installer
+keeps runtime dependencies separate from ComfyUI. Read the
+[Drama 3 setup guide](docs/drama3.md) for pinned versions and platform requirements.
+
+## Development checks
+
+Run Python tests with ComfyUI's Python environment (torch, NumPy, soundfile,
+SciPy, and Pillow available). JavaScript edit-state tests use Node.js 22+:
+
+```bash
+python -m unittest discover -s tests -v
+node --test tests/audio_editor_core.test.mjs
+```
+
+The CPU suite includes local loopback HTTP tests. Model inference integration
+checks are separate and require the relevant weights and hardware.
 
 ## License
 
-MIT
-
-## Viggle-Animate
-
-Native MiniMax H3 helpers for bounded 24 fps driving video, frozen text conditioning,
-video-first reference packing, distilled sigma schedules, and output trimming.
-See [Viggle-Animate setup and node wiring](docs/viggle.md).
-
-## Vision-language generation
-
-Use **CRTP Vision Language · Model Selector** to choose native Qwen3-VL 8B or
-Qwen3.8 27B GGUF with its matching mmproj. See [setup and controls](docs/vl-text.md).
+MIT for this toolpack. Model weights and external runtimes retain their own
+licenses; see [Drama 3 upstream sources and license notes](docs/drama3.md#upstream-sources-and-licenses).

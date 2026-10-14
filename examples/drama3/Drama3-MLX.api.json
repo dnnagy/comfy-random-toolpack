@@ -1,0 +1,25 @@
+{
+  "1": {
+    "class_type": "CRTP_Drama3MLXGenerate",
+    "inputs": {
+      "model_path": "fish-audio-drama-3-4bit",
+      "text": "This is a local test of Drama Three.",
+      "seed": 42,
+      "temperature": 0.7,
+      "top_p": 0.7,
+      "top_k": 30,
+      "max_new_tokens": 1024,
+      "timeout_seconds": 1800
+    }
+  },
+  "2": {
+    "class_type": "SaveAudio",
+    "inputs": {
+      "audio": [
+        "1",
+        0
+      ],
+      "filename_prefix": "audio/Drama3_MLX"
+    }
+  }
+}
