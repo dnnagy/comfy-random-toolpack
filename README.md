@@ -4,6 +4,16 @@ A grab-bag of small, useful ComfyUI custom nodes.
 
 ## Nodes
 
+### Experimental CRTP H3 Latent State
+
+Eight nodes preserve sampled H3 latents, load them lazily, start a video from a
+saved image latent, continue from a 5/22-frame video tail, and save/assemble
+verified takes. Clean source latents are native fixed guides; new segments use
+fresh sampling. The existing pixel-continuation nodes remain unchanged.
+
+See [setup, two test workflows, state format and limitations](docs/h3-state.md).
+UI and API examples are in [examples/h3_state](examples/h3_state).
+
 ### CRTP MiniMax H3 Continuation Nodes
 
 These nodes are self-contained and use only ComfyUI core's native MiniMax H3
