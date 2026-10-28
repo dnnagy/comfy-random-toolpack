@@ -1,6 +1,6 @@
 # Experimental H3 latent-state toolkit
 
-Eight nodes and two standalone test workflows. No product template changes, no
+Eight nodes and three standalone test workflows. No product template changes, no
 replacement of the existing CRTP pixel-based continuation helpers, no refinement.
 This branch is based on CRTP `6f24baf8c53cf7fc82664d93120af9c1a5a79da4`.
 
@@ -9,7 +9,8 @@ This branch is based on CRTP `6f24baf8c53cf7fc82664d93120af9c1a5a79da4`.
 Open these **UI** JSON files in ComfyUI (the matching `_api.json` files are for
 API submission, not the canvas):
 
-- `examples/h3_state/H3-State-First-Frame-Test.json`
+- `examples/h3_state/H3-State-Initial-Video-Test.json` — start here with an image
+- `examples/h3_state/H3-State-First-Frame-Test.json` — start from a saved image latent
 - `examples/h3_state/H3-State-Continuation-Test.json`
 
 Dependencies: ComfyUI with native H3 multi-frame guides and the guide/reference
@@ -21,8 +22,28 @@ commit `73c9bad4d21e7addbe1d13bc92eee0f1431b017d`.
 
 The graphs start with the **base Ref2VA model, RES multistep, Simple, 30 steps,
 full denoise, fixed seed**. They have no Turbo LoRA or refinement. Generation
-resolution is inherited from the saved state, not the unused latent output of
-the prompt node. Start at a modest resolution for the first GPU smoke test.
+resolution is inherited from the guide state, not the unused latent output of
+the prompt node. In Initial Video, the **Output canvas** image-scale node defines
+that guide's resolution. Start at a modest resolution for the first GPU smoke test.
+
+### Generate the initial video (no saved latent required)
+
+1. Open **H3-State-Initial-Video-Test.json** and upload the opening image.
+2. Set **Output canvas** width/height (multiples of 32; default 1024×576).
+   It center-crops the image to that aspect ratio. The resized image supplies
+   both the opening-frame guide and `<Picture 1>`; extra references start at
+   `<Picture 2>`.
+3. Edit the prompt and set duration on **Prepare Latent Generation** (default
+   10 seconds, snapped to H3's native frame grid). Queue the workflow.
+4. **Save Take** saves `output/h3_test/root_<id>.mp4` and the paired
+   `root_<id>.safetensors`, containing the complete sampled video/audio latents.
+   The opening clip is retained in full; no continuation overlap is removed.
+5. Paste the saved `.safetensors` path into **Lazy Load H3 State** in
+   **H3-State-Continuation-Test.json**, choose `tail_5` or `tail_22`, and generate
+   the next segment. Paths are printed in the console and returned in node history.
+
+This starter has no state-file loader or bootstrap switch. It uses the same eight
+nodes already published; no additional node implementation or model is needed.
 
 ### First frame from a saved latent
 

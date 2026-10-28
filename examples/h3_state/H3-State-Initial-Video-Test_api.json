@@ -1,0 +1,281 @@
+{
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "_meta": {
+      "title": "UNETLoader"
+    }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_32b_minimax_h3_int8_convrot.safetensors",
+      "type": "minimax",
+      "device": "default"
+    },
+    "_meta": {
+      "title": "CLIPLoader"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+    },
+    "_meta": {
+      "title": "VAELoader"
+    }
+  },
+  "4": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+    },
+    "_meta": {
+      "title": "VAELoader"
+    }
+  },
+  "5": {
+    "class_type": "MiniMaxH3ReferenceToVideo",
+    "inputs": {
+      "prompt": "subject_definitions:\nThe person and room shown in <Picture 1>, which also supplies the opening frame.\n\nsummary:\nA natural documentary shot.\n\nretention_analysis:\nPreserve the person's appearance, clothing, room and lighting.\n\ndetailed_description:\n[Shot 1] The person looks toward the window and slowly smiles. The camera remains steady. Preserve natural skin texture and incoming motion. No cuts.\n\noverall_soundscape:\nQuiet room ambience.\n\nnon_diegetic_music:\nN/A",
+      "width": 1024,
+      "height": 576,
+      "length": 243,
+      "ref_image_size": "max",
+      "clip": [
+        "2",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ],
+      "audio_vae": [
+        "4",
+        0
+      ],
+      "ref_images.ref_image_0": [
+        "26",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Prompt + optional references (guide defines actual canvas)"
+    }
+  },
+  "20": {
+    "class_type": "CRTP_LazyLoadImageUpload",
+    "inputs": {
+      "image": "first_frame.png"
+    },
+    "_meta": {
+      "title": "Upload first-frame image (required)"
+    }
+  },
+  "21": {
+    "class_type": "VAEEncode",
+    "inputs": {
+      "vae": [
+        "3",
+        0
+      ],
+      "pixels": [
+        "26",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "VAEEncode"
+    }
+  },
+  "22": {
+    "class_type": "CRTP_H3StateFromLatent",
+    "inputs": {
+      "kind": "image_keyframe",
+      "origin": "encoded_pixels",
+      "vae_id": "minimax_h3_video_vae_fp16.safetensors",
+      "latent": [
+        "21",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Encoded opening frame \u2014 generation starts here"
+    }
+  },
+  "26": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "upscale_method": "lanczos",
+      "width": 1024,
+      "height": 576,
+      "crop": "center",
+      "image": [
+        "20",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Output canvas \u2014 center-crops the first frame"
+    }
+  },
+  "7": {
+    "class_type": "CRTP_H3SelectLatentContext",
+    "inputs": {
+      "mode": "image_keyframe",
+      "reuse_audio": false,
+      "state": [
+        "22",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "CRTP_H3SelectLatentContext"
+    }
+  },
+  "8": {
+    "class_type": "CRTP_H3PrepareLatentGeneration",
+    "inputs": {
+      "seconds": 10.0,
+      "vae_id": "minimax_h3_video_vae_fp16.safetensors",
+      "positive": [
+        "5",
+        0
+      ],
+      "context": [
+        "7",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "CRTP_H3PrepareLatentGeneration"
+    }
+  },
+  "9": {
+    "class_type": "BasicGuider",
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "conditioning": [
+        "8",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "BasicGuider"
+    }
+  },
+  "10": {
+    "class_type": "BasicScheduler",
+    "inputs": {
+      "scheduler": "simple",
+      "steps": 30,
+      "denoise": 1.0,
+      "model": [
+        "1",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "BasicScheduler"
+    }
+  },
+  "11": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "res_multistep"
+    },
+    "_meta": {
+      "title": "KSamplerSelect"
+    }
+  },
+  "12": {
+    "class_type": "RandomNoise",
+    "inputs": {
+      "noise_seed": 10104
+    },
+    "_meta": {
+      "title": "RandomNoise"
+    }
+  },
+  "13": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": [
+        "12",
+        0
+      ],
+      "guider": [
+        "9",
+        0
+      ],
+      "sampler": [
+        "11",
+        0
+      ],
+      "sigmas": [
+        "10",
+        0
+      ],
+      "latent_image": [
+        "8",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "14": {
+    "class_type": "CRTP_H3DecodeAndTrim",
+    "inputs": {
+      "samples": [
+        "13",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ],
+      "audio_vae": [
+        "4",
+        0
+      ],
+      "plan": [
+        "8",
+        2
+      ]
+    },
+    "_meta": {
+      "title": "CRTP_H3DecodeAndTrim"
+    }
+  },
+  "15": {
+    "class_type": "CRTP_H3SaveTake",
+    "inputs": {
+      "filename_prefix": "h3_test/root",
+      "crf": 18,
+      "state": [
+        "14",
+        2
+      ],
+      "images": [
+        "14",
+        0
+      ],
+      "audio": [
+        "14",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "CRTP_H3SaveTake"
+    }
+  }
+}

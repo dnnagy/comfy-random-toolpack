@@ -1,4 +1,4 @@
-"""Rebuild the two isolated H3 test graphs (UI and API); no product templates."""
+"""Rebuild the isolated H3 test graphs (UI and API); no product templates."""
 import json
 from pathlib import Path
 
@@ -46,7 +46,7 @@ class Graph:
         (ROOT / (name + "_api.json")).write_text(json.dumps(self.api, indent=2)+"\n")
 
 
-def build(continuation):
+def build(continuation, initial=False):
     g = Graph()
     g.node(1,"UNETLoader",[30,600],[],[("MODEL","MODEL")],[("unet_name","minimax_h3_ref2va_pruned_int8_convrot.safetensors"),("weight_dtype","default")])
     g.node(2,"CLIPLoader",[30,760],[],[("CLIP","CLIP")],[("clip_name","qwen3vl_32b_minimax_h3_int8_convrot.safetensors"),("type","minimax"),("device","default")])
@@ -64,22 +64,43 @@ def build(continuation):
            [("prompt",prompt),("width",1024),("height",576),("length",243),("ref_image_size","max")],
            "Prompt + optional references (guide defines actual canvas)",size=[470,650])
     for src, name in [(2,"clip"),(3,"vae"),(4,"audio_vae")]: g.link(src,0,5,name)
-    g.node(6,"CRTP_LazyLoadH3State",[30,30],[],[("state","CRTP_H3_STATE"),("info","STRING")],
-           [("state_path","h3_test/REPLACE_WITH_"+("TAKE" if continuation else "KEYFRAME")+".safetensors")])
+    if not initial:
+        g.node(6,"CRTP_LazyLoadH3State",[30,30],[],[("state","CRTP_H3_STATE"),("info","STRING")],
+               [("state_path","h3_test/REPLACE_WITH_"+("TAKE" if continuation else "KEYFRAME")+".safetensors")])
     source = 6
     if not continuation:
         g.node(20,"CRTP_LazyLoadImageUpload",[30,1350],[],[("image","IMAGE"),("mask","MASK"),("loaded","BOOLEAN")],[("image","first_frame.png"),("upload","image")],"Optional one-time bootstrap: upload a 32-aligned image")
         g.node(21,"VAEEncode",[450,1400],[("pixels","IMAGE"),("vae","VAE")],[("LATENT","LATENT")])
-        g.link(20,0,21,"pixels"); g.link(3,0,21,"vae")
+        if not initial:
+            g.link(20,0,21,"pixels")
+        g.link(3,0,21,"vae")
         g.node(22,"CRTP_H3StateFromLatent",[850,1350],[("latent","LATENT"),("plan","CRTP_H3_PLAN")],[("state","CRTP_H3_STATE")],
                [("kind","image_keyframe"),("origin","encoded_pixels"),("vae_id",VAE)],"Bootstrap OR connect a sampled Fizgig still latent here")
         g.link(21,0,22,"latent")
-        g.node(23,"LazySwitchKJ",[450,30],[("on_false","CRTP_H3_STATE"),("on_true","CRTP_H3_STATE")],[("state","CRTP_H3_STATE")],
-               [("switch",True)],"TRUE: saved latent / FALSE: one-time image encode")
-        g.link(22,0,23,"on_false"); g.link(6,0,23,"on_true")
-        g.node(24,"CRTP_SaveH3State",[850,30],[("state","CRTP_H3_STATE")],[("state","CRTP_H3_STATE"),("state_path","STRING")],
-               [("filename_prefix","h3_test/keyframe")])
-        g.link(23,0,24,"state"); source = 24
+        if initial:
+            source = 22
+            g.sockets[20]["title"] = "Upload first-frame image (required)"
+            g.sockets[22]["title"] = "Encoded opening frame — generation starts here"
+            g.sockets[20].update(pos=[30,30], size=[340,360])
+            g.sockets[21]["pos"] = [850,30]
+            g.sockets[22]["pos"] = [850,210]
+            for id in (20,22):
+                g.api[str(id)]["_meta"]["title"] = g.sockets[id]["title"]
+            g.node(26,"ImageScale",[450,30],[("image","IMAGE")],[("IMAGE","IMAGE")],
+                   [("upscale_method","lanczos"),("width",1024),("height",576),("crop","center")],
+                   "Output canvas — center-crops the first frame")
+            for src, out, dst, name in [(20,0,26,"image"),(26,0,21,"pixels"),(26,0,5,"ref_images.ref_image_0")]:
+                g.link(src,out,dst,name)
+            g.api["5"]["inputs"]["prompt"] = prompt.replace("The person and room established by the latent guide.",
+                "The person and room shown in <Picture 1>, which also supplies the opening frame.")
+            g.sockets[5]["widgets_values"][0] = g.api["5"]["inputs"]["prompt"]
+        else:
+            g.node(23,"LazySwitchKJ",[450,30],[("on_false","CRTP_H3_STATE"),("on_true","CRTP_H3_STATE")],[("state","CRTP_H3_STATE")],
+                   [("switch",True)],"TRUE: saved latent / FALSE: one-time image encode")
+            g.link(22,0,23,"on_false"); g.link(6,0,23,"on_true")
+            g.node(24,"CRTP_SaveH3State",[850,30],[("state","CRTP_H3_STATE")],[("state","CRTP_H3_STATE"),("state_path","STRING")],
+                   [("filename_prefix","h3_test/keyframe")])
+            g.link(23,0,24,"state"); source = 24
     g.node(7,"CRTP_H3SelectLatentContext",[1250,30],[("state","CRTP_H3_STATE")],[("context","CRTP_H3_CONTEXT"),("info","STRING")],
            [("mode","tail_22" if continuation else "image_keyframe"),("reuse_audio",False)])
     g.link(source,0,7,"state")
@@ -119,9 +140,17 @@ def build(continuation):
                "To bootstrap: select FALSE, upload a 32-aligned image, then copy the saved keyframe state path into the loader and switch TRUE.\n"
                "For a generated H3 still: connect its sampler output to State from Latent, set origin=sampled and switch FALSE. Never use a sliced video token as a still.\n"
                "Save Take produces the root clip and state needed by the continuation test."))
+    if initial:
+        note = ("START HERE — generate the first video and save continuation state.\n"
+                "1. Upload a first-frame image. Set width/height on Output canvas (multiples of 32). Center crop is explicit.\n"
+                "2. Edit the prompt; <Picture 1> is the resized first frame. Extra references start at <Picture 2>.\n"
+                "3. Set duration on Prepare Latent Generation and queue. Defaults: 10 seconds, base model, 30 steps, RES multistep + Simple.\n"
+                "4. Save Take writes h3_test/root_<id>.mp4 AND root_<id>.safetensors, containing the final sampled video/audio latent.\n"
+                "5. Paste the .safetensors path into Lazy Load H3 State in H3-State-Continuation-Test. Select tail_5 or tail_22.\n"
+                "No previous latent file is required. The complete opening clip is kept. Existing workflows are unchanged.")
     g.node(99,"Note",[2150,950],[],[],[("text",note)],size=[750,340])
-    g.save("H3-State-Continuation-Test" if continuation else "H3-State-First-Frame-Test")
+    g.save("H3-State-Initial-Video-Test" if initial else ("H3-State-Continuation-Test" if continuation else "H3-State-First-Frame-Test"))
 
 
 if __name__ == "__main__":
-    build(False); build(True)
+    build(False); build(True); build(False, initial=True)

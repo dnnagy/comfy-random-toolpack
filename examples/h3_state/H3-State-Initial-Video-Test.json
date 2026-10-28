@@ -1,0 +1,1046 @@
+{
+  "last_node_id": 99,
+  "last_link_id": 26,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "UNETLoader",
+      "pos": [
+        30,
+        600
+      ],
+      "size": [
+        340,
+        111
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            12,
+            14
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "UNETLoader"
+      },
+      "widgets_values": [
+        "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+        "default"
+      ]
+    },
+    {
+      "id": 2,
+      "type": "CLIPLoader",
+      "pos": [
+        30,
+        760
+      ],
+      "size": [
+        340,
+        139
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            1
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPLoader"
+      },
+      "widgets_values": [
+        "qwen3vl_32b_minimax_h3_int8_convrot.safetensors",
+        "minimax",
+        "default"
+      ]
+    },
+    {
+      "id": 3,
+      "type": "VAELoader",
+      "pos": [
+        30,
+        960
+      ],
+      "size": [
+        340,
+        100
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            2,
+            4,
+            21
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAELoader"
+      },
+      "widgets_values": [
+        "minimax_h3_video_vae_fp16.safetensors"
+      ]
+    },
+    {
+      "id": 4,
+      "type": "VAELoader",
+      "pos": [
+        30,
+        1100
+      ],
+      "size": [
+        340,
+        100
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            3,
+            22
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAELoader"
+      },
+      "widgets_values": [
+        "minimax_h3_audio_vae_fp32.safetensors"
+      ]
+    },
+    {
+      "id": 5,
+      "type": "MiniMaxH3ReferenceToVideo",
+      "pos": [
+        450,
+        650
+      ],
+      "size": [
+        470,
+        650
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 1
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 2
+        },
+        {
+          "name": "audio_vae",
+          "type": "VAE",
+          "link": 3
+        },
+        {
+          "name": "ref_images.ref_image_0",
+          "type": "IMAGE",
+          "link": 8
+        },
+        {
+          "name": "ref_images.ref_image_1",
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "ref_audios.ref_audio_0",
+          "type": "AUDIO",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "links": [
+            10
+          ]
+        },
+        {
+          "name": "unused_latent",
+          "type": "LATENT",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MiniMaxH3ReferenceToVideo"
+      },
+      "widgets_values": [
+        "subject_definitions:\nThe person and room shown in <Picture 1>, which also supplies the opening frame.\n\nsummary:\nA natural documentary shot.\n\nretention_analysis:\nPreserve the person's appearance, clothing, room and lighting.\n\ndetailed_description:\n[Shot 1] The person looks toward the window and slowly smiles. The camera remains steady. Preserve natural skin texture and incoming motion. No cuts.\n\noverall_soundscape:\nQuiet room ambience.\n\nnon_diegetic_music:\nN/A",
+        1024,
+        576,
+        243,
+        "max"
+      ],
+      "title": "Prompt + optional references (guide defines actual canvas)"
+    },
+    {
+      "id": 20,
+      "type": "CRTP_LazyLoadImageUpload",
+      "pos": [
+        30,
+        30
+      ],
+      "size": [
+        340,
+        360
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            6
+          ]
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": []
+        },
+        {
+          "name": "loaded",
+          "type": "BOOLEAN",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CRTP_LazyLoadImageUpload"
+      },
+      "widgets_values": [
+        "first_frame.png",
+        "image"
+      ],
+      "title": "Upload first-frame image (required)"
+    },
+    {
+      "id": 21,
+      "type": "VAEEncode",
+      "pos": [
+        850,
+        30
+      ],
+      "size": [
+        340,
+        100
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pixels",
+          "type": "IMAGE",
+          "link": 7
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            5
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEEncode"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 22,
+      "type": "CRTP_H3StateFromLatent",
+      "pos": [
+        850,
+        210
+      ],
+      "size": [
+        340,
+        183
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "latent",
+          "type": "LATENT",
+          "link": 5
+        },
+        {
+          "name": "plan",
+          "type": "CRTP_H3_PLAN",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "state",
+          "type": "CRTP_H3_STATE",
+          "links": [
+            9
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CRTP_H3StateFromLatent"
+      },
+      "widgets_values": [
+        "image_keyframe",
+        "encoded_pixels",
+        "minimax_h3_video_vae_fp16.safetensors"
+      ],
+      "title": "Encoded opening frame \u2014 generation starts here"
+    },
+    {
+      "id": 26,
+      "type": "ImageScale",
+      "pos": [
+        450,
+        30
+      ],
+      "size": [
+        340,
+        189
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 6
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            7,
+            8
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageScale"
+      },
+      "widgets_values": [
+        "lanczos",
+        1024,
+        576,
+        "center"
+      ],
+      "title": "Output canvas \u2014 center-crops the first frame"
+    },
+    {
+      "id": 7,
+      "type": "CRTP_H3SelectLatentContext",
+      "pos": [
+        1250,
+        30
+      ],
+      "size": [
+        340,
+        133
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "state",
+          "type": "CRTP_H3_STATE",
+          "link": 9
+        }
+      ],
+      "outputs": [
+        {
+          "name": "context",
+          "type": "CRTP_H3_CONTEXT",
+          "links": [
+            11
+          ]
+        },
+        {
+          "name": "info",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CRTP_H3SelectLatentContext"
+      },
+      "widgets_values": [
+        "image_keyframe",
+        false
+      ]
+    },
+    {
+      "id": 8,
+      "type": "CRTP_H3PrepareLatentGeneration",
+      "pos": [
+        1250,
+        330
+      ],
+      "size": [
+        340,
+        155
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 10
+        },
+        {
+          "name": "context",
+          "type": "CRTP_H3_CONTEXT",
+          "link": 11
+        }
+      ],
+      "outputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "links": [
+            13
+          ]
+        },
+        {
+          "name": "fresh_latent",
+          "type": "LATENT",
+          "links": [
+            19
+          ]
+        },
+        {
+          "name": "plan",
+          "type": "CRTP_H3_PLAN",
+          "links": [
+            23
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CRTP_H3PrepareLatentGeneration"
+      },
+      "widgets_values": [
+        10.0,
+        "minimax_h3_video_vae_fp16.safetensors"
+      ]
+    },
+    {
+      "id": 9,
+      "type": "BasicGuider",
+      "pos": [
+        1700,
+        300
+      ],
+      "size": [
+        340,
+        100
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 12
+        },
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "link": 13
+        }
+      ],
+      "outputs": [
+        {
+          "name": "GUIDER",
+          "type": "GUIDER",
+          "links": [
+            16
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "BasicGuider"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 10,
+      "type": "BasicScheduler",
+      "pos": [
+        1700,
+        500
+      ],
+      "size": [
+        340,
+        161
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 14
+        }
+      ],
+      "outputs": [
+        {
+          "name": "SIGMAS",
+          "type": "SIGMAS",
+          "links": [
+            18
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "BasicScheduler"
+      },
+      "widgets_values": [
+        "simple",
+        30,
+        1.0
+      ]
+    },
+    {
+      "id": 11,
+      "type": "KSamplerSelect",
+      "pos": [
+        1700,
+        710
+      ],
+      "size": [
+        340,
+        100
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "SAMPLER",
+          "type": "SAMPLER",
+          "links": [
+            17
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KSamplerSelect"
+      },
+      "widgets_values": [
+        "res_multistep"
+      ]
+    },
+    {
+      "id": 12,
+      "type": "RandomNoise",
+      "pos": [
+        1700,
+        30
+      ],
+      "size": [
+        340,
+        111
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "NOISE",
+          "type": "NOISE",
+          "links": [
+            15
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RandomNoise"
+      },
+      "widgets_values": [
+        10104,
+        "fixed"
+      ]
+    },
+    {
+      "id": 13,
+      "type": "SamplerCustomAdvanced",
+      "pos": [
+        2150,
+        300
+      ],
+      "size": [
+        340,
+        165
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "noise",
+          "type": "NOISE",
+          "link": 15
+        },
+        {
+          "name": "guider",
+          "type": "GUIDER",
+          "link": 16
+        },
+        {
+          "name": "sampler",
+          "type": "SAMPLER",
+          "link": 17
+        },
+        {
+          "name": "sigmas",
+          "type": "SIGMAS",
+          "link": 18
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 19
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "LATENT",
+          "links": [
+            20
+          ]
+        },
+        {
+          "name": "denoised_output",
+          "type": "LATENT",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SamplerCustomAdvanced"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 14,
+      "type": "CRTP_H3DecodeAndTrim",
+      "pos": [
+        2550,
+        300
+      ],
+      "size": [
+        340,
+        143
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 20
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 21
+        },
+        {
+          "name": "audio_vae",
+          "type": "VAE",
+          "link": 22
+        },
+        {
+          "name": "plan",
+          "type": "CRTP_H3_PLAN",
+          "link": 23
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [
+            25
+          ]
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": [
+            26
+          ]
+        },
+        {
+          "name": "raw_state",
+          "type": "CRTP_H3_STATE",
+          "links": [
+            24
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CRTP_H3DecodeAndTrim"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 15,
+      "type": "CRTP_H3SaveTake",
+      "pos": [
+        2950,
+        300
+      ],
+      "size": [
+        340,
+        177
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "state",
+          "type": "CRTP_H3_STATE",
+          "link": 24
+        },
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 25
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 26
+        }
+      ],
+      "outputs": [
+        {
+          "name": "state",
+          "type": "CRTP_H3_STATE",
+          "links": []
+        },
+        {
+          "name": "state_path",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "video_path",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CRTP_H3SaveTake"
+      },
+      "widgets_values": [
+        "h3_test/root",
+        18
+      ]
+    },
+    {
+      "id": 99,
+      "type": "Note",
+      "pos": [
+        2150,
+        950
+      ],
+      "size": [
+        750,
+        340
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "Note"
+      },
+      "widgets_values": [
+        "START HERE \u2014 generate the first video and save continuation state.\n1. Upload a first-frame image. Set width/height on Output canvas (multiples of 32). Center crop is explicit.\n2. Edit the prompt; <Picture 1> is the resized first frame. Extra references start at <Picture 2>.\n3. Set duration on Prepare Latent Generation and queue. Defaults: 10 seconds, base model, 30 steps, RES multistep + Simple.\n4. Save Take writes h3_test/root_<id>.mp4 AND root_<id>.safetensors, containing the final sampled video/audio latent.\n5. Paste the .safetensors path into Lazy Load H3 State in H3-State-Continuation-Test. Select tail_5 or tail_22.\nNo previous latent file is required. The complete opening clip is kept. Existing workflows are unchanged."
+      ]
+    }
+  ],
+  "links": [
+    [
+      1,
+      2,
+      0,
+      5,
+      0,
+      "CLIP"
+    ],
+    [
+      2,
+      3,
+      0,
+      5,
+      1,
+      "VAE"
+    ],
+    [
+      3,
+      4,
+      0,
+      5,
+      2,
+      "VAE"
+    ],
+    [
+      4,
+      3,
+      0,
+      21,
+      1,
+      "VAE"
+    ],
+    [
+      5,
+      21,
+      0,
+      22,
+      0,
+      "LATENT"
+    ],
+    [
+      6,
+      20,
+      0,
+      26,
+      0,
+      "IMAGE"
+    ],
+    [
+      7,
+      26,
+      0,
+      21,
+      0,
+      "IMAGE"
+    ],
+    [
+      8,
+      26,
+      0,
+      5,
+      3,
+      "IMAGE"
+    ],
+    [
+      9,
+      22,
+      0,
+      7,
+      0,
+      "CRTP_H3_STATE"
+    ],
+    [
+      10,
+      5,
+      0,
+      8,
+      0,
+      "CONDITIONING"
+    ],
+    [
+      11,
+      7,
+      0,
+      8,
+      1,
+      "CRTP_H3_CONTEXT"
+    ],
+    [
+      12,
+      1,
+      0,
+      9,
+      0,
+      "MODEL"
+    ],
+    [
+      13,
+      8,
+      0,
+      9,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      14,
+      1,
+      0,
+      10,
+      0,
+      "MODEL"
+    ],
+    [
+      15,
+      12,
+      0,
+      13,
+      0,
+      "NOISE"
+    ],
+    [
+      16,
+      9,
+      0,
+      13,
+      1,
+      "GUIDER"
+    ],
+    [
+      17,
+      11,
+      0,
+      13,
+      2,
+      "SAMPLER"
+    ],
+    [
+      18,
+      10,
+      0,
+      13,
+      3,
+      "SIGMAS"
+    ],
+    [
+      19,
+      8,
+      1,
+      13,
+      4,
+      "LATENT"
+    ],
+    [
+      20,
+      13,
+      0,
+      14,
+      0,
+      "LATENT"
+    ],
+    [
+      21,
+      3,
+      0,
+      14,
+      1,
+      "VAE"
+    ],
+    [
+      22,
+      4,
+      0,
+      14,
+      2,
+      "VAE"
+    ],
+    [
+      23,
+      8,
+      2,
+      14,
+      3,
+      "CRTP_H3_PLAN"
+    ],
+    [
+      24,
+      14,
+      2,
+      15,
+      0,
+      "CRTP_H3_STATE"
+    ],
+    [
+      25,
+      14,
+      0,
+      15,
+      1,
+      "IMAGE"
+    ],
+    [
+      26,
+      14,
+      1,
+      15,
+      2,
+      "AUDIO"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.65,
+      "offset": [
+        0,
+        0
+      ]
+    }
+  },
+  "version": 0.4
+}

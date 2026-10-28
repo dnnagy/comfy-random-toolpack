@@ -211,6 +211,23 @@ class H3StateTests(unittest.TestCase):
                 # lazy branch, breaking latent-only runs without an image.
                 self.assertEqual(api["20"]["class_type"], "CRTP_LazyLoadImageUpload")
 
+    def test_initial_video_has_no_previous_state_dependency_and_saves_sampled_av(self):
+        path = Path(__file__).parents[1] / "examples/h3_state/H3-State-Initial-Video-Test_api.json"
+        graph = json.loads(path.read_text())
+        classes = {node["class_type"] for node in graph.values()}
+        self.assertNotIn("CRTP_LazyLoadH3State", classes)
+        self.assertNotIn("LazySwitchKJ", classes)
+        self.assertEqual(graph["21"]["inputs"]["pixels"], ["26", 0])
+        self.assertEqual(graph["5"]["inputs"]["ref_images.ref_image_0"], ["26", 0])
+        self.assertEqual(graph["22"]["inputs"]["kind"], "image_keyframe")
+        self.assertEqual(graph["7"]["inputs"]["mode"], "image_keyframe")
+        # Save Take receives decoded sampled AV plus its complete raw state,
+        # not the encoded opening image state.
+        self.assertEqual(graph["14"]["inputs"]["samples"], ["13", 0])
+        self.assertEqual(graph["15"]["inputs"]["state"], ["14", 2])
+        self.assertEqual(graph["15"]["inputs"]["images"], ["14", 0])
+        self.assertEqual(graph["15"]["inputs"]["audio"], ["14", 1])
+
     @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "FFmpeg required")
     def test_save_take_assemble_frame_counts_and_hash_checks(self):
         import subprocess
