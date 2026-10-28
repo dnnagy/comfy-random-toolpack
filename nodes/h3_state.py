@@ -365,12 +365,31 @@ class CRTP_H3DecodeAndTrim:
     @classmethod
     def INPUT_TYPES(cls):
         return {"required": {"samples": ("LATENT",), "vae": ("VAE",), "audio_vae": ("VAE",),
-                             "plan": (PLAN,)}}
+                             "plan": (PLAN,)},
+                "optional": {"raw_state": (STATE,), "after_state": (STATE,)}}
 
-    def run(self, samples, vae, audio_vae, plan):
+    def run(self, samples, vae, audio_vae, plan, raw_state=None, after_state=None):
         from nodes import VAEDecode
         from comfy_extras.nodes_audio import vae_decode_audio
         state = make_state(samples, "av_clip", "sampled", plan["vae_id"], plan)
+        if raw_state is not None:
+            # Preserve the identity already used by downstream continuations.
+            # Rewrapping here would give the parent a different UUID at save time.
+            for key, value in state["meta"].items():
+                if key != "id" and raw_state["meta"].get(key) != value:
+                    raise ValueError("raw_state does not match this generation plan.")
+            original = read_tensors(raw_state)
+            if set(original) != set(state["tensors"]):
+                raise ValueError("raw_state does not match sampled AV tensors.")
+            for key, tensor in state["tensors"].items():
+                saved = original[key]
+                if saved.shape != tensor.shape or saved.dtype != tensor.dtype:
+                    raise ValueError("raw_state does not match sampled AV tensors.")
+                if saved.data_ptr() != tensor.data_ptr() and not torch.equal(saved.to(tensor.device), tensor):
+                    raise ValueError("raw_state does not match sampled AV tensors.")
+            state = raw_state
+        # after_state is an execution dependency, not conditioning: a later
+        # sampler can finish before this decoder starts loading its VAEs.
         images = VAEDecode().decode(vae, samples)[0]
         if images.shape[0] != plan["raw_frames"]:
             raise ValueError("VAE decoded frame count differs from saved raw H3 layout.")
@@ -485,15 +504,32 @@ class CRTP_H3AssembleTakes:
         return {"required": {"state_paths": ("STRING", {"multiline": True, "default": ""}),
                 "filename_prefix": ("STRING", {"default": "h3_test/assembled"}),
                 "allow_cuts": ("BOOLEAN", {"default": False}),
-                "crf": ("INT", {"default": 18, "min": 0, "max": 51})}}
+                "crf": ("INT", {"default": 18, "min": 0, "max": 51})},
+                "optional": {"state_path_1": ("STRING", {"forceInput": True}),
+                             "state_path_2": ("STRING", {"forceInput": True}),
+                             "state_path_3": ("STRING", {"forceInput": True}),
+                             "pad_final_frame": ("BOOLEAN", {"default": False})}}
 
     @classmethod
     def IS_CHANGED(cls, **kwargs):
         # Must re-verify externally edited/swapped media on every explicit export.
         return float("nan")
 
-    def run(self, state_paths, filename_prefix, allow_cuts, crf):
+    def run(self, state_paths, filename_prefix, allow_cuts, crf,
+            state_path_1=None, state_path_2=None, state_path_3=None, pad_final_frame=False):
         paths = [line.strip() for line in state_paths.splitlines() if line.strip()]
+        wired = (state_path_1, state_path_2, state_path_3)
+        if any(path is not None for path in wired):
+            if paths:
+                raise ValueError("Use either wired state paths or the text list, not both.")
+            gap = False
+            for path in wired:
+                if path is None:
+                    gap = True
+                elif gap or not path.strip():
+                    raise ValueError("Wired state paths must be nonempty and contiguous from slot 1.")
+                else:
+                    paths.append(path.strip())
         if not paths or len(paths) > 100:
             raise ValueError("Supply 1–100 state paths, one per line, in playback order.")
         if not 0 <= int(crf) <= 51:
@@ -503,6 +539,7 @@ class CRTP_H3AssembleTakes:
         filters = []
         previous = None
         canvas = None
+        total_frames = 0
         for i, state in enumerate(states):
             meta = state["meta"]
             size = (meta["width"], meta["height"])
@@ -522,15 +559,22 @@ class CRTP_H3AssembleTakes:
                     raise ValueError("Takes are not consecutive parent/child clips; enable allow_cuts for an intentional cut.")
             previous = meta
             count = meta["delivered_end"] - meta["delivered_start"]
+            total_frames += count
             duration = count / 24
             command += ["-i", str(video)]
             filters += [f"[{i}:v]trim=end_frame={count},setpts=N/(24*TB),setsar=1[v{i}]",
                         f"[{i}:a]aresample=48000,aformat=channel_layouts=stereo,apad,atrim=duration={duration:.12f},asetpts=PTS-STARTPTS[a{i}]"]
-        filters.append("".join(f"[v{i}][a{i}]" for i in range(len(states))) + f"concat=n={len(states)}:v=1:a=1[v][a]")
+        filters.append("".join(f"[v{i}][a{i}]" for i in range(len(states))) + f"concat=n={len(states)}:v=1:a=1[vc][ac]")
+        if pad_final_frame:
+            filters += [f"[vc]tpad=stop_mode=clone:stop=1,trim=end_frame={total_frames+1},setpts=N/(24*TB)[v]",
+                        f"[ac]apad,atrim=duration={(total_frames+1)/24:.12f},asetpts=PTS-STARTPTS[a]"]
+        else:
+            filters += ["[vc]null[v]", "[ac]anull[a]"]
         base = output_base(filename_prefix)
         output = str(base) + ".mp4"
         temporary = str(base) + ".partial.mp4"
         command += ["-filter_complex", ";".join(filters), "-map", "[v]", "-map", "[a]",
+                    "-r", "24", "-fps_mode", "cfr",
                     "-c:v", "libx264", "-crf", str(int(crf)), "-preset", "fast", "-pix_fmt", "yuv420p",
                     "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", temporary]
         try:

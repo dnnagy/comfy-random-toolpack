@@ -150,6 +150,7 @@ def build(continuation, initial=False):
                 "No previous latent file is required. The complete opening clip is kept. Existing workflows are unchanged.")
     g.node(99,"Note",[2150,950],[],[],[("text",note)],size=[750,340])
     g.save("H3-State-Initial-Video-Test" if initial else ("H3-State-Continuation-Test" if continuation else "H3-State-First-Frame-Test"))
+    return g
 
 
 if __name__ == "__main__":

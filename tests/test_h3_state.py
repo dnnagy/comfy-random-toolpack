@@ -228,6 +228,87 @@ class H3StateTests(unittest.TestCase):
         self.assertEqual(graph["15"]["inputs"]["images"], ["14", 0])
         self.assertEqual(graph["15"]["inputs"]["audio"], ["14", 1])
 
+    def test_three_segment_graph_shared_loaders_and_sequential_dependencies(self):
+        path = Path(__file__).parents[1] / "examples/h3_state/H3-State-Three-Segments-30s-Test_api.json"
+        graph = json.loads(path.read_text())
+        types_in_graph = [node["class_type"] for node in graph.values()]
+        self.assertEqual(types_in_graph.count("UNETLoader"), 1)
+        self.assertEqual(types_in_graph.count("CLIPLoader"), 1)
+        self.assertEqual(types_in_graph.count("VAELoader"), 2)
+        self.assertEqual(types_in_graph.count("MiniMaxH3ReferenceToVideo"), 3)
+        self.assertEqual(types_in_graph.count("SamplerCustomAdvanced"), 3)
+        self.assertEqual(types_in_graph.count("BasicScheduler"), 1)
+        self.assertEqual(graph["107"]["inputs"]["state"], ["30",0])
+        self.assertEqual(graph["207"]["inputs"]["state"], ["130",0])
+        for offset in (0,100,200):
+            self.assertEqual(graph[str(8+offset)]["inputs"]["seconds"], 10.0)
+            self.assertEqual(graph[str(14+offset)]["inputs"]["after_state"], ["230",0])
+            self.assertEqual(graph[str(14+offset)]["inputs"]["raw_state"], [str(30+offset),0])
+            self.assertEqual(graph[str(9+offset)]["inputs"]["model"], ["1",0])
+            if offset:
+                self.assertEqual(graph[str(7+offset)]["inputs"]["mode"], "tail_22")
+        self.assertTrue(graph["300"]["inputs"]["pad_final_frame"])
+        self.assertFalse(graph["300"]["inputs"]["allow_cuts"])
+        # A dependency cycle would prevent ComfyUI from ever starting sampling.
+        done = set()
+        def visit(id, active):
+            self.assertNotIn(id, active)
+            if id in done:
+                return
+            for value in graph[id]["inputs"].values():
+                if isinstance(value,list):
+                    visit(value[0], active | {id})
+            done.add(id)
+        for id in graph:
+            visit(id,set())
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "FFmpeg required")
+    def test_three_takes_exact_30s_export_and_stable_parent_ids(self):
+        import subprocess
+        image = h3.make_state({"samples": torch.ones(1,24,1,2,2)}, "image_keyframe", "encoded_pixels", "h3_vae")
+        takes = []
+        source = image
+        for index in range(3):
+            context, _ = h3.CRTP_H3SelectLatentContext().run(source, "image_keyframe" if index == 0 else "tail_22", index > 0)
+            _, samples, plan = self.prepare(context,10)
+            source = h3.make_state(samples,"av_clip","sampled","h3_vae",plan)
+            takes.append((samples,plan,source))
+        self.assertEqual([p[1]["raw_frames"]-p[1]["trim_head"] for p in takes], [243,238,238])
+        paths = []
+        for index,(samples,plan,raw) in enumerate(takes):
+            pixels = torch.full((plan["raw_frames"],32,32,3), 0.2+index*0.2)
+            decoder = types.SimpleNamespace(VAEDecode=lambda: types.SimpleNamespace(decode=lambda *_: (pixels,)))
+            audio_decoder = types.SimpleNamespace(vae_decode_audio=lambda *_: {"waveform": torch.zeros(1,2,round(plan["raw_frames"]*32000/24)), "sample_rate": 32000})
+            with patch.dict(sys.modules, {"nodes": decoder, "comfy_extras.nodes_audio": audio_decoder}):
+                images,audio,state = h3.CRTP_H3DecodeAndTrim().run(samples,None,None,plan,raw_state=raw,after_state=takes[-1][2])
+            self.assertIs(state,raw)
+            self.assertEqual(state["meta"]["id"],raw["meta"]["id"])
+            result = h3.CRTP_H3SaveTake().run(state,images,audio,"chain",18)["result"]
+            paths.append(result[1])
+        kwargs = dict(zip(("state_path_1","state_path_2","state_path_3"),paths))
+        output = h3.CRTP_H3AssembleTakes().run("","continuous",False,18,pad_final_frame=True,**kwargs)["result"][0]
+        probe = json.loads(subprocess.check_output(["ffprobe","-v","error","-count_frames","-show_entries","stream=codec_type,nb_read_frames,duration,avg_frame_rate","-of","json",output]))
+        video = next(s for s in probe["streams"] if s["codec_type"] == "video")
+        audio = next(s for s in probe["streams"] if s["codec_type"] == "audio")
+        self.assertEqual(int(video["nb_read_frames"]),720)
+        self.assertEqual(video["avg_frame_rate"],"24/1")
+        self.assertAlmostEqual(float(video["duration"]),30,places=5)
+        self.assertAlmostEqual(float(audio["duration"]),30,places=4)
+        with self.assertRaisesRegex(ValueError,"not both"):
+            h3.CRTP_H3AssembleTakes().run(paths[0],"bad",False,18,**kwargs)
+        with self.assertRaisesRegex(ValueError,"contiguous"):
+            h3.CRTP_H3AssembleTakes().run("","bad",False,18,state_path_2=paths[1])
+
+    def test_decode_rejects_unrelated_raw_state(self):
+        context,_ = h3.CRTP_H3SelectLatentContext().run(self.state(),"tail_22",False)
+        _,samples,plan = self.prepare(context)
+        wrong = h3.make_state(samples,"av_clip","sampled","h3_vae",plan)
+        wrong["tensors"]["video"] = torch.ones_like(wrong["tensors"]["video"])
+        with patch.dict(sys.modules, {"nodes": types.SimpleNamespace(VAEDecode=None),
+                                    "comfy_extras.nodes_audio": types.SimpleNamespace(vae_decode_audio=None)}):
+            with self.assertRaisesRegex(ValueError,"sampled AV"):
+                h3.CRTP_H3DecodeAndTrim().run(samples,None,None,plan,raw_state=wrong)
+
     @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "FFmpeg required")
     def test_save_take_assemble_frame_counts_and_hash_checks(self):
         import subprocess

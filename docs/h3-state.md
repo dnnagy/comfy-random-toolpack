@@ -1,6 +1,6 @@
 # Experimental H3 latent-state toolkit
 
-Eight nodes and three standalone test workflows. No product template changes, no
+Eight nodes and four standalone test workflows. No product template changes, no
 replacement of the existing CRTP pixel-based continuation helpers, no refinement.
 This branch is based on CRTP `6f24baf8c53cf7fc82664d93120af9c1a5a79da4`.
 
@@ -12,6 +12,7 @@ API submission, not the canvas):
 - `examples/h3_state/H3-State-Initial-Video-Test.json` — start here with an image
 - `examples/h3_state/H3-State-First-Frame-Test.json` — start from a saved image latent
 - `examples/h3_state/H3-State-Continuation-Test.json`
+- `examples/h3_state/H3-State-Three-Segments-30s-Test.json` — three prompts, one queue, automatic assembly
 
 Dependencies: ComfyUI with native H3 multi-frame guides and the guide/reference
 packing fix, CRTP from this branch, KJNodes (lazy switch in the first workflow),
@@ -25,6 +26,45 @@ full denoise, fixed seed**. They have no Turbo LoRA or refinement. Generation
 resolution is inherited from the guide state, not the unused latent output of
 the prompt node. In Initial Video, the **Output canvas** image-scale node defines
 that guide's resolution. Start at a modest resolution for the first GPU smoke test.
+
+### Three prompts → one 30-second continuous shot
+
+Open **H3-State-Three-Segments-30s-Test.json**, upload the first-frame image,
+choose the canvas, and edit the three numbered prompts. Queue once. The graph:
+
+1. Shares exactly one diffusion-model loader, one text-encoder loader, one video
+   VAE loader and one audio VAE loader. Scheduler/sampler selection is also shared.
+2. Generates the first clip from the image and passes the **raw sampled state**
+   directly to segment two, then segment three. Each continuation uses 22 frames
+   of motion context, with source audio reuse enabled by default.
+3. Finishes all three samplers before decoding output clips. The optional
+   `after_state` input is a scheduling dependency, not additional conditioning.
+   The optional `raw_state` input preserves the parent IDs already used by the
+   continuation chain; it validates that the plan and sampled tensors match.
+4. Trims each continuation's 22-frame generated overlap, saves all three original
+   clips and states, and wires their returned paths to Assemble Takes. No path
+   copying or separate export queue is needed.
+
+Outputs are under `output/h3_test/three_segments/`: `segment_1_*`, `segment_2_*`,
+`segment_3_*` (each MP4 + safetensors), and `continuous_30s_*.mp4`.
+
+At native 24 fps, the default ten-second settings produce 243 frames in the first
+clip and 260 raw frames in each continuation. Removing 22 from each continuation
+leaves **719 frames** (29.9583 s). This graph explicitly enables `pad_final_frame`
+on assembly: repeat only the very last frame once and pad the soundtrack to give
+**720 frames / exactly 30 seconds**. The three segment masters remain unchanged.
+Changing segment durations changes the total; this option always adds one frame,
+not an arbitrary stretch or duration clamp.
+
+Shared loader nodes avoid duplicate model instantiation. ComfyUI can still offload
+and reload weights between RAM and VRAM according to memory pressure; this graph
+does not force all models to remain GPU-resident. Continuity of appearance/motion
+still depends on generation quality and prompts, not just correct concatenation.
+No refinement, seam blending, or optical flow is applied.
+
+Update CRTP and restart ComfyUI before using this graph: the optional decoder and
+assembly inputs are newer than the original eight-node release. Existing test
+workflow files retain their previous behavior and wiring.
 
 ### Generate the initial video (no saved latent required)
 
@@ -164,6 +204,7 @@ unmodified state. Disk capacity must account for raw latent sidecars.
 python -m unittest discover -s tests -p 'test_h3_state.py' -v
 python scripts/check_h3_native_contract.py /app/ComfyUI
 python scripts/build_h3_state_workflows.py
+python scripts/build_h3_three_segment_workflow.py
 ```
 
 CPU tests exercise real torch, safetensors and FFmpeg, dtype-exact round trips,

@@ -11,7 +11,7 @@ saved image latent, continue from a 5/22-frame video tail, and save/assemble
 verified takes. Clean source latents are native fixed guides; new segments use
 fresh sampling. The existing pixel-continuation nodes remain unchanged.
 
-See [setup, three test workflows, state format and limitations](docs/h3-state.md).
+See [setup, four test workflows, state format and limitations](docs/h3-state.md).
 UI and API examples are in [examples/h3_state](examples/h3_state).
 
 ### CRTP MiniMax H3 Continuation Nodes
