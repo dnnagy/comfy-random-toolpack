@@ -1,0 +1,15 @@
+{
+  "300": {
+    "class_type": "CRTP_H3AssembleTakesV2",
+    "inputs": {
+      "state_paths": "h3_test/three_segments_turbo/REPLACE_segment_1.safetensors\nh3_test/three_segments_turbo/REPLACE_segment_2.safetensors\nh3_test/three_segments_turbo/REPLACE_segment_3.safetensors",
+      "filename_prefix": "h3_test/recovered/continuous_30s",
+      "allow_cuts": false,
+      "crf": 18,
+      "pad_final_frame": true
+    },
+    "_meta": {
+      "title": "FINAL \u2014 assemble saved takes only"
+    }
+  }
+}

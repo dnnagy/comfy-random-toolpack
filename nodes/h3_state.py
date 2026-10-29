@@ -574,12 +574,25 @@ class CRTP_H3AssembleTakes:
         output = str(base) + ".mp4"
         temporary = str(base) + ".partial.mp4"
         command += ["-filter_complex", ";".join(filters), "-map", "[v]", "-map", "[a]",
-                    "-r", "24", "-fps_mode", "cfr",
+                    # Single output: legacy -vsync works on the pod's FFmpeg 4.4
+                    # as well as newer releases; -fps_mode requires FFmpeg 5.1+.
+                    "-r", "24", "-vsync", "cfr",
                     "-c:v", "libx264", "-crf", str(int(crf)), "-preset", "fast", "-pix_fmt", "yuv420p",
                     "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", temporary]
         try:
             subprocess.run(command, check=True, capture_output=True, timeout=1800)
             os.link(temporary, output)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+            detail = exc.stderr or "FFmpeg returned no error output."
+            if isinstance(detail, bytes):
+                detail = detail.decode("utf-8", errors="replace")
+            reason = (f"exit status {exc.returncode}" if isinstance(exc, subprocess.CalledProcessError)
+                      else f"timeout after {exc.timeout} seconds")
+            raise RuntimeError(
+                f"H3 assembly failed ({reason}). FFmpeg error:\n{detail[-8000:].strip()}\n"
+                "Saved segment videos and states are unchanged. Retry with the assembly-only "
+                "workflow; no sampling or VAE decoding is needed."
+            ) from exc
         finally:
             Path(temporary).unlink(missing_ok=True)
         return {"ui": video_ui(output, [output]), "result": (output,)}

@@ -1,6 +1,6 @@
 # Experimental H3 latent-state toolkit
 
-Eight nodes and five standalone test workflows. No product template changes, no
+Eight nodes, five generation test workflows and an assembly-only recovery workflow. No product template changes, no
 replacement of the existing CRTP pixel-based continuation helpers, no refinement.
 This branch is based on CRTP `6f24baf8c53cf7fc82664d93120af9c1a5a79da4`.
 
@@ -227,6 +227,7 @@ python scripts/check_h3_native_contract.py /app/ComfyUI
 python scripts/build_h3_state_workflows.py
 python scripts/build_h3_three_segment_workflow.py
 python scripts/build_h3_three_segment_workflow.py --turbo
+python scripts/build_h3_assemble_workflow.py
 ```
 
 CPU tests exercise real torch, safetensors and FFmpeg, dtype-exact round trips,
@@ -264,3 +265,21 @@ sampling logic. An older installation reports missing nodes during prompt
 validation rather than sampling first and failing at decode. Load the updated
 workflow JSON to get this protection. The original node IDs and single-segment
 workflows remain supported.
+
+### Recover an export without regenerating
+
+If all `CRTP H3 saved state/video` messages appeared and only FINAL failed, the
+segment MP4s and state sidecars are already durable. Open
+`examples/h3_state/H3-State-Assemble-Saved-Takes.json` as a separate workflow.
+Paste the saved `.safetensors` paths into `state_paths`, one per line, in playback
+order (segment 1, 2, 3; save-log order can differ). Queue once. No model loaders,
+samplers or VAEs run. Keep each paired MP4 alongside its sidecar: assembly checks
+its hash and the parent/child chain. Already trimmed overlaps are not trimmed again.
+For the default 719-frame chain keep `pad_final_frame=true` to produce 720 frames.
+A failed export removes only its partial file; the original takes remain unchanged.
+
+The Ubuntu 22.04 pod ships FFmpeg 4.4, which rejects `-fps_mode`. Assembly uses
+`-vsync cfr` with `-r 24`, compatible with that release and current FFmpeg.
+FFmpeg failures now include stderr in the node error instead of only the command
+and exit status. Update CRTP and restart ComfyUI to load this fix, then queue only
+the assembly workflow. Saved takes survive the restart.

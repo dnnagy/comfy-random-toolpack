@@ -203,9 +203,11 @@ class H3StateTests(unittest.TestCase):
                         socket = next(i for i in ui_nodes[id]["inputs"] if i["name"] == name)
                         link = next(link for link in ui["links"] if link[0] == socket["link"])
                         self.assertEqual(link[1:4], [int(source), output, int(id)])
-            # The sample state is always fresh Prepare output, not a loaded state.
-            self.assertEqual(api["13"]["inputs"]["latent_image"], ["8", 1])
-            self.assertEqual(api["10"]["inputs"]["denoise"], 1.0)
+            # Generation graphs start from fresh Prepare output; export-only
+            # graphs have no sampler (checked independently below).
+            if api_path.name != "H3-State-Assemble-Saved-Takes_api.json":
+                self.assertEqual(api["13"]["inputs"]["latent_image"], ["8", 1])
+                self.assertEqual(api["10"]["inputs"]["denoise"], 1.0)
             self.assertNotIn("25", api)  # optional assembly is muted by default
             if "20" in api:
                 # Stock LoadImage validates file existence even on an unused
@@ -358,6 +360,38 @@ class H3StateTests(unittest.TestCase):
             h3.CRTP_H3AssembleTakes().run(paths[0],"bad",False,18,**kwargs)
         with self.assertRaisesRegex(ValueError,"contiguous"):
             h3.CRTP_H3AssembleTakes().run("","bad",False,18,state_path_2=paths[1])
+
+    def test_assemble_reports_ffmpeg_stderr_and_keeps_saved_takes(self):
+        import subprocess
+        state = self.state(22)
+        video = self.root / "take.mp4"
+        video.write_bytes(b"paired media fixture")
+        state["meta"]["media"] = {"filename": video.name, "sha256": h3.digest(video)}
+        path = self.save(state)
+        original_sidecar = Path(path).read_bytes()
+        def fail(command, **kwargs):
+            self.assertNotIn("-fps_mode", command)
+            self.assertEqual(command[command.index("-vsync") + 1], "cfr")
+            Path(command[-1]).write_bytes(b"partial export")
+            raise subprocess.CalledProcessError(1, command, stderr=b"No space left on device")
+        with patch.object(h3.subprocess, "run", side_effect=fail):
+            with self.assertRaisesRegex(RuntimeError, "No space left on device") as caught:
+                h3.CRTP_H3AssembleTakes().run(path, "failed_export", False, 18)
+        self.assertIn("no sampling or VAE decoding", str(caught.exception))
+        self.assertEqual(video.read_bytes(), b"paired media fixture")
+        self.assertEqual(Path(path).read_bytes(), original_sidecar)
+        self.assertEqual(list(self.root.glob("failed_export*")), [])
+
+    def test_assembly_recovery_graph_has_no_generation_dependencies(self):
+        root = Path(__file__).parents[1] / "examples/h3_state"
+        graph = json.loads((root / "H3-State-Assemble-Saved-Takes_api.json").read_text())
+        self.assertEqual(set(graph), {"300"})
+        node = graph["300"]
+        self.assertEqual(node["class_type"], "CRTP_H3AssembleTakesV2")
+        self.assertTrue(node["inputs"]["pad_final_frame"])
+        self.assertFalse(node["inputs"]["allow_cuts"])
+        self.assertEqual(len(node["inputs"]["state_paths"].splitlines()), 3)
+        inspect.signature(h3.CRTP_H3AssembleTakes().run).bind(**node["inputs"])
 
     def test_decode_rejects_unrelated_raw_state(self):
         context,_ = h3.CRTP_H3SelectLatentContext().run(self.state(),"tail_22",False)

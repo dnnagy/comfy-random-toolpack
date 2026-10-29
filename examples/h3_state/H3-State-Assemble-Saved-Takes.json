@@ -1,0 +1,76 @@
+{
+  "last_node_id": 300,
+  "last_link_id": 0,
+  "nodes": [
+    {
+      "id": 300,
+      "type": "CRTP_H3AssembleTakesV2",
+      "pos": [
+        30,
+        30
+      ],
+      "size": [
+        700,
+        360
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "video_path",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CRTP_H3AssembleTakesV2"
+      },
+      "widgets_values": [
+        "h3_test/three_segments_turbo/REPLACE_segment_1.safetensors\nh3_test/three_segments_turbo/REPLACE_segment_2.safetensors\nh3_test/three_segments_turbo/REPLACE_segment_3.safetensors",
+        "h3_test/recovered/continuous_30s",
+        false,
+        18,
+        true
+      ],
+      "title": "FINAL \u2014 assemble saved takes only"
+    },
+    {
+      "id": 99,
+      "type": "Note",
+      "pos": [
+        30,
+        440
+      ],
+      "size": [
+        700,
+        260
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "Note"
+      },
+      "widgets_values": [
+        "No models or samplers. Paste saved .safetensors paths into state_paths, one per line in playback order. The paired MP4 files must remain alongside their states. Do not list the MP4 paths.\nKeep allow_cuts false to verify the parent/child sequence. The three-segment 30-second graphs already trim their overlaps; this export does not trim them again.\npad_final_frame adds exactly one final repeated frame (719 \u2192 720 frames for the default three segments). Turn it off for exports that should preserve the original total frame count.\nQueue this graph alone. Updating/restarting CRTP is safe for already saved takes. The originals remain unchanged, and failed partial exports are removed."
+      ]
+    }
+  ],
+  "links": [],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.65,
+      "offset": [
+        0,
+        0
+      ]
+    }
+  },
+  "version": 0.4
+}
