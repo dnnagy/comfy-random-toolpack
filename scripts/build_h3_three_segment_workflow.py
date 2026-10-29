@@ -24,7 +24,7 @@ def widgets(g, id, updates):
         g.sockets[id]["widgets_values"][names.index(name)] = value
 
 
-def main():
+def main(turbo=False):
     g = build(False, initial=True)
     original = deepcopy(g.api)
     originals = deepcopy(g.sockets)
@@ -102,8 +102,39 @@ def main():
         "Native timing: 243 + (260-22) + (260-22) = 719 frames. Final export repeats ONLY the final frame once and pads audio to reach 720 frames / 30 seconds. Masters remain unmodified.\n"
         "Changing durations changes the total; pad_final_frame always adds exactly one frame.\n"
         "Requires CRTP V2 decoder/assembler IDs; update CRTP and restart ComfyUI if missing. No refinement or seam smoothing. A continuous shot is prompted, not guaranteed by concatenation."])
-    g.save("H3-State-Three-Segments-30s-Test")
+    name = "H3-State-Three-Segments-30s-Test"
+    if turbo:
+        lora = "minimax_h3_ref2v_turbo_8step_v1.1_768p_comfyui_bf16.safetensors"
+        g.node(40,"LoraLoaderModelOnly",[30,1320],[("model","MODEL")],[("MODEL","MODEL")],
+               [("lora_name",lora),("strength_model",1.0)],
+               "Shared Turbo v1.1 — 8 steps",size=[410,150])
+        g.sockets[40]["properties"]["models"] = [{
+            "name": lora, "directory": "loras",
+            "url": "https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/" + lora}]
+        g.link(1,0,40,"model")
+        for target in (9,109,209,10):
+            replace_link(g,40,0,target,"model")
+        g.api["10"]["inputs"]["steps"] = 8
+        g.sockets[10]["widgets_values"][1] = 8
+        g.api["11"]["inputs"]["sampler_name"] = "euler"
+        g.sockets[11]["widgets_values"] = ["euler"]
+        for index,offset in enumerate((0,100,200),1):
+            widgets(g,15+offset,{"filename_prefix":f"h3_test/three_segments_turbo/segment_{index}"})
+        prefix = "h3_test/three_segments_turbo/continuous_30s"
+        g.api["300"]["inputs"]["filename_prefix"] = prefix
+        g.sockets[300]["widgets_values"][1] = prefix
+        g.sockets[99]["widgets_values"][0] = (
+            "TURBO: Ref2V v1.1 8-step LoRA, strength 1.0, Euler + Simple, full denoise. "
+            "One shared LoRA-patched base model serves all three samplers. "
+            "Canvas remains 1024x576 for comparison with the base test.\n"
+            + g.sockets[99]["widgets_values"][0])
+        g.sockets[99]["size"][1] += 100
+        name = "H3-State-Three-Segments-30s-Turbo-8Step-Test"
+    g.save(name)
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--turbo", action="store_true", help="Build the separate Turbo v1.1 8-step graph")
+    main(turbo=parser.parse_args().turbo)

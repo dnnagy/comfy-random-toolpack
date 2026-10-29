@@ -1,0 +1,721 @@
+{
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "_meta": {
+      "title": "UNETLoader"
+    }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_32b_minimax_h3_int8_convrot.safetensors",
+      "type": "minimax",
+      "device": "default"
+    },
+    "_meta": {
+      "title": "CLIPLoader"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+    },
+    "_meta": {
+      "title": "VAELoader"
+    }
+  },
+  "4": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+    },
+    "_meta": {
+      "title": "VAELoader"
+    }
+  },
+  "5": {
+    "class_type": "MiniMaxH3ReferenceToVideo",
+    "inputs": {
+      "prompt": "subject_definitions:\nThe person and room shown in <Picture 1>.\n\nsummary:\nOne continuous documentary shot with no cuts.\n\nretention_analysis:\nPreserve the person's appearance, clothes, room and lighting.\n\ndetailed_description:\n[Shot 1] The person looks toward the window and slowly smiles. The camera remains steady. Preserve natural skin texture and movement. Do not restart the action or introduce a cut.\n\noverall_soundscape:\nContinuous quiet room ambience.\n\nnon_diegetic_music:\nN/A",
+      "width": 1024,
+      "height": 576,
+      "length": 243,
+      "ref_image_size": "max",
+      "clip": [
+        "2",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ],
+      "audio_vae": [
+        "4",
+        0
+      ],
+      "ref_images.ref_image_0": [
+        "26",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Prompt + optional references (guide defines actual canvas)"
+    }
+  },
+  "20": {
+    "class_type": "CRTP_LazyLoadImageUpload",
+    "inputs": {
+      "image": "first_frame.png"
+    },
+    "_meta": {
+      "title": "Upload first-frame image (required)"
+    }
+  },
+  "21": {
+    "class_type": "VAEEncode",
+    "inputs": {
+      "vae": [
+        "3",
+        0
+      ],
+      "pixels": [
+        "26",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "VAEEncode"
+    }
+  },
+  "22": {
+    "class_type": "CRTP_H3StateFromLatent",
+    "inputs": {
+      "kind": "image_keyframe",
+      "origin": "encoded_pixels",
+      "vae_id": "minimax_h3_video_vae_fp16.safetensors",
+      "latent": [
+        "21",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Encoded opening frame \u2014 generation starts here"
+    }
+  },
+  "26": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "upscale_method": "lanczos",
+      "width": 1024,
+      "height": 576,
+      "crop": "center",
+      "image": [
+        "20",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Output canvas \u2014 center-crops the first frame"
+    }
+  },
+  "7": {
+    "class_type": "CRTP_H3SelectLatentContext",
+    "inputs": {
+      "mode": "image_keyframe",
+      "reuse_audio": false,
+      "state": [
+        "22",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "CRTP_H3SelectLatentContext"
+    }
+  },
+  "8": {
+    "class_type": "CRTP_H3PrepareLatentGeneration",
+    "inputs": {
+      "seconds": 10.0,
+      "vae_id": "minimax_h3_video_vae_fp16.safetensors",
+      "positive": [
+        "5",
+        0
+      ],
+      "context": [
+        "7",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "CRTP_H3PrepareLatentGeneration"
+    }
+  },
+  "9": {
+    "class_type": "BasicGuider",
+    "inputs": {
+      "model": [
+        "40",
+        0
+      ],
+      "conditioning": [
+        "8",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "BasicGuider"
+    }
+  },
+  "10": {
+    "class_type": "BasicScheduler",
+    "inputs": {
+      "scheduler": "simple",
+      "steps": 8,
+      "denoise": 1.0,
+      "model": [
+        "40",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "BasicScheduler"
+    }
+  },
+  "11": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "_meta": {
+      "title": "KSamplerSelect"
+    }
+  },
+  "12": {
+    "class_type": "RandomNoise",
+    "inputs": {
+      "noise_seed": 10104
+    },
+    "_meta": {
+      "title": "RandomNoise"
+    }
+  },
+  "13": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": [
+        "12",
+        0
+      ],
+      "guider": [
+        "9",
+        0
+      ],
+      "sampler": [
+        "11",
+        0
+      ],
+      "sigmas": [
+        "10",
+        0
+      ],
+      "latent_image": [
+        "8",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "14": {
+    "class_type": "CRTP_H3DecodeAndTrimV2",
+    "inputs": {
+      "samples": [
+        "13",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ],
+      "audio_vae": [
+        "4",
+        0
+      ],
+      "plan": [
+        "8",
+        2
+      ],
+      "raw_state": [
+        "30",
+        0
+      ],
+      "after_state": [
+        "230",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "CRTP_H3DecodeAndTrim"
+    }
+  },
+  "15": {
+    "class_type": "CRTP_H3SaveTake",
+    "inputs": {
+      "filename_prefix": "h3_test/three_segments_turbo/segment_1",
+      "crf": 18,
+      "state": [
+        "14",
+        2
+      ],
+      "images": [
+        "14",
+        0
+      ],
+      "audio": [
+        "14",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "CRTP_H3SaveTake"
+    }
+  },
+  "105": {
+    "class_type": "MiniMaxH3ReferenceToVideo",
+    "inputs": {
+      "prompt": "subject_definitions:\nThe person and room shown in <Picture 1>.\n\nsummary:\nVideo continuation. One continuous documentary shot with no cuts.\n\nretention_analysis:\nPreserve the person's appearance, clothes, room and lighting.\n\ndetailed_description:\n[Shot 1] Continuing the same movement, the person slowly turns back toward the camera and rests a hand on the table. The camera remains steady. Preserve natural skin texture and movement. Do not restart the action or introduce a cut.\n\noverall_soundscape:\nContinuous quiet room ambience.\n\nnon_diegetic_music:\nN/A",
+      "width": 1024,
+      "height": 576,
+      "length": 243,
+      "ref_image_size": "max",
+      "clip": [
+        "2",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ],
+      "audio_vae": [
+        "4",
+        0
+      ],
+      "ref_images.ref_image_0": [
+        "26",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Prompt + optional references (guide defines actual canvas)"
+    }
+  },
+  "107": {
+    "class_type": "CRTP_H3SelectLatentContext",
+    "inputs": {
+      "mode": "tail_22",
+      "reuse_audio": true,
+      "state": [
+        "30",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "CRTP_H3SelectLatentContext"
+    }
+  },
+  "108": {
+    "class_type": "CRTP_H3PrepareLatentGeneration",
+    "inputs": {
+      "seconds": 10.0,
+      "vae_id": "minimax_h3_video_vae_fp16.safetensors",
+      "positive": [
+        "105",
+        0
+      ],
+      "context": [
+        "107",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "CRTP_H3PrepareLatentGeneration"
+    }
+  },
+  "109": {
+    "class_type": "BasicGuider",
+    "inputs": {
+      "model": [
+        "40",
+        0
+      ],
+      "conditioning": [
+        "108",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "BasicGuider"
+    }
+  },
+  "112": {
+    "class_type": "RandomNoise",
+    "inputs": {
+      "noise_seed": 10105
+    },
+    "_meta": {
+      "title": "RandomNoise"
+    }
+  },
+  "113": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": [
+        "112",
+        0
+      ],
+      "guider": [
+        "109",
+        0
+      ],
+      "sampler": [
+        "11",
+        0
+      ],
+      "sigmas": [
+        "10",
+        0
+      ],
+      "latent_image": [
+        "108",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "114": {
+    "class_type": "CRTP_H3DecodeAndTrimV2",
+    "inputs": {
+      "samples": [
+        "113",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ],
+      "audio_vae": [
+        "4",
+        0
+      ],
+      "plan": [
+        "108",
+        2
+      ],
+      "raw_state": [
+        "130",
+        0
+      ],
+      "after_state": [
+        "230",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "CRTP_H3DecodeAndTrim"
+    }
+  },
+  "115": {
+    "class_type": "CRTP_H3SaveTake",
+    "inputs": {
+      "filename_prefix": "h3_test/three_segments_turbo/segment_2",
+      "crf": 18,
+      "state": [
+        "114",
+        2
+      ],
+      "images": [
+        "114",
+        0
+      ],
+      "audio": [
+        "114",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "CRTP_H3SaveTake"
+    }
+  },
+  "205": {
+    "class_type": "MiniMaxH3ReferenceToVideo",
+    "inputs": {
+      "prompt": "subject_definitions:\nThe person and room shown in <Picture 1>.\n\nsummary:\nVideo continuation. One continuous documentary shot with no cuts.\n\nretention_analysis:\nPreserve the person's appearance, clothes, room and lighting.\n\ndetailed_description:\n[Shot 1] Continuing immediately, the person picks up the cup from the table, takes a small sip, and lowers it. The camera remains steady. Preserve natural skin texture and movement. Do not restart the action or introduce a cut.\n\noverall_soundscape:\nContinuous quiet room ambience.\n\nnon_diegetic_music:\nN/A",
+      "width": 1024,
+      "height": 576,
+      "length": 243,
+      "ref_image_size": "max",
+      "clip": [
+        "2",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ],
+      "audio_vae": [
+        "4",
+        0
+      ],
+      "ref_images.ref_image_0": [
+        "26",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Prompt + optional references (guide defines actual canvas)"
+    }
+  },
+  "207": {
+    "class_type": "CRTP_H3SelectLatentContext",
+    "inputs": {
+      "mode": "tail_22",
+      "reuse_audio": true,
+      "state": [
+        "130",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "CRTP_H3SelectLatentContext"
+    }
+  },
+  "208": {
+    "class_type": "CRTP_H3PrepareLatentGeneration",
+    "inputs": {
+      "seconds": 10.0,
+      "vae_id": "minimax_h3_video_vae_fp16.safetensors",
+      "positive": [
+        "205",
+        0
+      ],
+      "context": [
+        "207",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "CRTP_H3PrepareLatentGeneration"
+    }
+  },
+  "209": {
+    "class_type": "BasicGuider",
+    "inputs": {
+      "model": [
+        "40",
+        0
+      ],
+      "conditioning": [
+        "208",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "BasicGuider"
+    }
+  },
+  "212": {
+    "class_type": "RandomNoise",
+    "inputs": {
+      "noise_seed": 10106
+    },
+    "_meta": {
+      "title": "RandomNoise"
+    }
+  },
+  "213": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": [
+        "212",
+        0
+      ],
+      "guider": [
+        "209",
+        0
+      ],
+      "sampler": [
+        "11",
+        0
+      ],
+      "sigmas": [
+        "10",
+        0
+      ],
+      "latent_image": [
+        "208",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "214": {
+    "class_type": "CRTP_H3DecodeAndTrimV2",
+    "inputs": {
+      "samples": [
+        "213",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ],
+      "audio_vae": [
+        "4",
+        0
+      ],
+      "plan": [
+        "208",
+        2
+      ],
+      "raw_state": [
+        "230",
+        0
+      ],
+      "after_state": [
+        "230",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "CRTP_H3DecodeAndTrim"
+    }
+  },
+  "215": {
+    "class_type": "CRTP_H3SaveTake",
+    "inputs": {
+      "filename_prefix": "h3_test/three_segments_turbo/segment_3",
+      "crf": 18,
+      "state": [
+        "214",
+        2
+      ],
+      "images": [
+        "214",
+        0
+      ],
+      "audio": [
+        "214",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "CRTP_H3SaveTake"
+    }
+  },
+  "30": {
+    "class_type": "CRTP_H3StateFromLatent",
+    "inputs": {
+      "kind": "av_clip",
+      "origin": "sampled",
+      "vae_id": "minimax_h3_video_vae_fp16.safetensors",
+      "latent": [
+        "13",
+        0
+      ],
+      "plan": [
+        "8",
+        2
+      ]
+    },
+    "_meta": {
+      "title": "Segment 1: raw sampled state (no decode)"
+    }
+  },
+  "130": {
+    "class_type": "CRTP_H3StateFromLatent",
+    "inputs": {
+      "kind": "av_clip",
+      "origin": "sampled",
+      "vae_id": "minimax_h3_video_vae_fp16.safetensors",
+      "latent": [
+        "113",
+        0
+      ],
+      "plan": [
+        "108",
+        2
+      ]
+    },
+    "_meta": {
+      "title": "Segment 2: raw sampled state (no decode)"
+    }
+  },
+  "230": {
+    "class_type": "CRTP_H3StateFromLatent",
+    "inputs": {
+      "kind": "av_clip",
+      "origin": "sampled",
+      "vae_id": "minimax_h3_video_vae_fp16.safetensors",
+      "latent": [
+        "213",
+        0
+      ],
+      "plan": [
+        "208",
+        2
+      ]
+    },
+    "_meta": {
+      "title": "Segment 3: raw sampled state (no decode)"
+    }
+  },
+  "300": {
+    "class_type": "CRTP_H3AssembleTakesV2",
+    "inputs": {
+      "state_paths": "",
+      "filename_prefix": "h3_test/three_segments_turbo/continuous_30s",
+      "allow_cuts": false,
+      "crf": 18,
+      "pad_final_frame": true,
+      "state_path_1": [
+        "15",
+        1
+      ],
+      "state_path_2": [
+        "115",
+        1
+      ],
+      "state_path_3": [
+        "215",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "FINAL \u2014 30-second continuous shot"
+    }
+  },
+  "40": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "lora_name": "minimax_h3_ref2v_turbo_8step_v1.1_768p_comfyui_bf16.safetensors",
+      "strength_model": 1.0,
+      "model": [
+        "1",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Shared Turbo v1.1 \u2014 8 steps"
+    }
+  }
+}

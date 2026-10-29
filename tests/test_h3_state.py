@@ -263,6 +263,44 @@ class H3StateTests(unittest.TestCase):
         for id in graph:
             visit(id,set())
 
+    def test_turbo_chain_uses_one_patched_model_for_all_segments(self):
+        root = Path(__file__).parents[1] / "examples/h3_state"
+        name = "H3-State-Three-Segments-30s-Turbo-8Step-Test"
+        base = json.loads((root / "H3-State-Three-Segments-30s-Test_api.json").read_text())
+        graph = json.loads((root / (name + "_api.json")).read_text())
+        ui = json.loads((root / (name + ".json")).read_text())
+        classes = [n["class_type"] for n in graph.values()]
+        self.assertEqual(classes.count("UNETLoader"), 1)
+        self.assertEqual(classes.count("LoraLoaderModelOnly"), 1)
+        self.assertEqual(graph["40"]["inputs"], {
+            "model": ["1",0], "strength_model": 1.0,
+            "lora_name": "minimax_h3_ref2v_turbo_8step_v1.1_768p_comfyui_bf16.safetensors"})
+        for id in ("9","109","209","10"):
+            self.assertEqual(graph[id]["inputs"]["model"], ["40",0])
+        self.assertEqual(graph["10"]["inputs"], {"model": ["40",0], "scheduler": "simple", "steps": 8, "denoise": 1.0})
+        self.assertEqual(graph["11"]["inputs"]["sampler_name"], "euler")
+        # The patch must affect no timing, conditioning, state or decode wiring.
+        for id, original in base.items():
+            actual = graph[id]
+            self.assertEqual(actual["class_type"], original["class_type"])
+            for key,value in original["inputs"].items():
+                if id in ("9","109","209","10") and key == "model": continue
+                if (id,key) in (("10","steps"),("11","sampler_name")): continue
+                if key == "filename_prefix":
+                    self.assertEqual(actual["inputs"][key], value.replace("three_segments/", "three_segments_turbo/"))
+                else:
+                    self.assertEqual(actual["inputs"][key], value, (id,key))
+        # UI wires must serialize the same patched-model routing as the API.
+        for node in ui["nodes"]:
+            if str(node["id"]) not in graph: continue
+            for slot in node["inputs"]:
+                if slot["link"] is None: continue
+                link = next(item for item in ui["links"] if item[0] == slot["link"])
+                self.assertEqual(graph[str(node["id"])]["inputs"][slot["name"]], [str(link[1]),link[2]])
+        nodes = {node["id"]: node for node in ui["nodes"]}
+        self.assertEqual(nodes[10]["widgets_values"], ["simple",8,1.0])
+        self.assertEqual(nodes[11]["widgets_values"], ["euler"])
+
     def test_three_segment_requires_versioned_nodes_before_sampling(self):
         base = Path(__file__).parents[1] / "examples/h3_state"
         graph = json.loads((base / "H3-State-Three-Segments-30s-Test_api.json").read_text())

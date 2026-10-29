@@ -1,6 +1,6 @@
 # Experimental H3 latent-state toolkit
 
-Eight nodes and four standalone test workflows. No product template changes, no
+Eight nodes and five standalone test workflows. No product template changes, no
 replacement of the existing CRTP pixel-based continuation helpers, no refinement.
 This branch is based on CRTP `6f24baf8c53cf7fc82664d93120af9c1a5a79da4`.
 
@@ -13,6 +13,7 @@ API submission, not the canvas):
 - `examples/h3_state/H3-State-First-Frame-Test.json` — start from a saved image latent
 - `examples/h3_state/H3-State-Continuation-Test.json`
 - `examples/h3_state/H3-State-Three-Segments-30s-Test.json` — three prompts, one queue, automatic assembly
+- `examples/h3_state/H3-State-Three-Segments-30s-Turbo-8Step-Test.json` — the same chain with Turbo v1.1, 8 steps
 
 Dependencies: ComfyUI with native H3 multi-frame guides and the guide/reference
 packing fix, CRTP from this branch, KJNodes (lazy switch in the first workflow),
@@ -21,11 +22,31 @@ Torch and safetensors are already ComfyUI dependencies. No extra node pack is
 needed for continuation. The native contract was checked against the pod's core
 commit `73c9bad4d21e7addbe1d13bc92eee0f1431b017d`.
 
-The graphs start with the **base Ref2VA model, RES multistep, Simple, 30 steps,
-full denoise, fixed seed**. They have no Turbo LoRA or refinement. Generation
+The four base graphs start with the **base Ref2VA model, RES multistep, Simple,
+30 steps, full denoise, fixed seed**. The separate Turbo graph adds the adapter
+and uses **Euler, Simple, 8 steps**. None applies refinement. Generation
 resolution is inherited from the guide state, not the unused latent output of
 the prompt node. In Initial Video, the **Output canvas** image-scale node defines
 that guide's resolution. Start at a modest resolution for the first GPU smoke test.
+
+### Turbo 8-step variant
+
+Open **H3-State-Three-Segments-30s-Turbo-8Step-Test.json** for the faster variant.
+It uses the same Ref2VA base checkpoint, patched once by `LoraLoaderModelOnly`
+with [LightX2V's Ref2V Turbo v1.1 8-step ComfyUI BF16 adapter](https://huggingface.co/lightx2v/Minimax-h3-Turbo/blob/main/minimax_h3_ref2v_turbo_8step_v1.1_768p_comfyui_bf16.safetensors):
+
+`minimax_h3_ref2v_turbo_8step_v1.1_768p_comfyui_bf16.safetensors`
+
+Install it under `ComfyUI/models/loras/`. The older 4-step adapter is not a
+substitute. Strength is **1.0**, sampler **Euler**, scheduler **Simple**, **8 steps**,
+and denoise **1.0**. All three guiders and the scheduler share the patched model.
+No new CRTP node implementation is needed beyond the V2 IDs used by the base chain.
+
+The three prompts, fixed seeds, 1024x576 canvas, 22-frame latent/audio context,
+overlap trimming, state saves, deferred decoding and exact 720-frame export are
+unchanged. Outputs have their own prefix: `output/h3_test/three_segments_turbo/`.
+The adapter is named for 768p; this smoke-test canvas is deliberately kept equal
+to the base graph for comparisons. Generation quality still needs a GPU test.
 
 ### Three prompts → one 30-second continuous shot
 
@@ -205,6 +226,7 @@ python -m unittest discover -s tests -p 'test_h3_state.py' -v
 python scripts/check_h3_native_contract.py /app/ComfyUI
 python scripts/build_h3_state_workflows.py
 python scripts/build_h3_three_segment_workflow.py
+python scripts/build_h3_three_segment_workflow.py --turbo
 ```
 
 CPU tests exercise real torch, safetensors and FFmpeg, dtype-exact round trips,
