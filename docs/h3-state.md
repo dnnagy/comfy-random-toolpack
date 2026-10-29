@@ -225,3 +225,20 @@ No source code was copied from these projects, and none is a runtime dependency:
 - [LongTakeNoCuts](https://github.com/xyzDist/H3-LongTakeNoCuts): distinguish loss
   from reconstruction and residual generative drift. Its refinement/blending
   approach is deliberately deferred; this release establishes a clean baseline.
+
+### Version mismatch: unexpected `raw_state`
+
+`CRTP_H3DecodeAndTrim.run() got an unexpected keyword argument 'raw_state'`
+means the running decoder class predates the three-segment workflow. Fetching
+files or updating the local pod dependency pin does not update a running Python
+class or an already published image. Update the CRTP checkout and restart the
+ComfyUI process, or rebuild the pod image from the updated dependency manifest.
+A browser refresh alone is insufficient. Restarting clears unsaved sampler caches;
+already saved MP4/state files survive.
+
+The three-segment graph now uses `CRTP_H3DecodeAndTrimV2` and
+`CRTP_H3AssembleTakesV2`. These are aliases of the eight core nodes, not new
+sampling logic. An older installation reports missing nodes during prompt
+validation rather than sampling first and failing at decode. Load the updated
+workflow JSON to get this protection. The original node IDs and single-segment
+workflows remain supported.

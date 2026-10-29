@@ -82,7 +82,11 @@ def main():
     # may still offload shared models according to available VRAM.
     for offset in (0,100,200):
         g.link(230,0,14+offset,"after_state")
-    g.node(300,"CRTP_H3AssembleTakes",[3350,300],
+        # A legacy install must reject the prompt before executing any sampler.
+        g.sockets[14+offset]["type"] = "CRTP_H3DecodeAndTrimV2"
+        g.sockets[14+offset]["properties"]["Node name for S&R"] = "CRTP_H3DecodeAndTrimV2"
+        g.api[str(14+offset)]["class_type"] = "CRTP_H3DecodeAndTrimV2"
+    g.node(300,"CRTP_H3AssembleTakesV2",[3350,300],
            [("state_path_1","STRING"),("state_path_2","STRING"),("state_path_3","STRING")],
            [("video_path","STRING")],[("state_paths",""),("filename_prefix","h3_test/three_segments/continuous_30s"),
                                       ("allow_cuts",False),("crf",18),("pad_final_frame",True)],
@@ -97,7 +101,7 @@ def main():
         "All sampling finishes before output decoding. Shared loaders avoid duplicate graph loads; ComfyUI can still move models between RAM and VRAM.\n"
         "Native timing: 243 + (260-22) + (260-22) = 719 frames. Final export repeats ONLY the final frame once and pads audio to reach 720 frames / 30 seconds. Masters remain unmodified.\n"
         "Changing durations changes the total; pad_final_frame always adds exactly one frame.\n"
-        "Requires the updated CRTP optional decode/assembly inputs. No refinement or seam smoothing. A continuous shot is prompted, not guaranteed by concatenation."])
+        "Requires CRTP V2 decoder/assembler IDs; update CRTP and restart ComfyUI if missing. No refinement or seam smoothing. A continuous shot is prompted, not guaranteed by concatenation."])
     g.save("H3-State-Three-Segments-30s-Test")
 
 

@@ -590,6 +590,13 @@ NODE_CLASS_MAPPINGS = {cls.__name__: cls for cls in (
     CRTP_H3SelectLatentContext, CRTP_H3PrepareLatentGeneration,
     CRTP_H3DecodeAndTrim, CRTP_H3SaveTake, CRTP_H3AssembleTakes,
 )}
+# Versioned graph IDs make older installs reject the three-segment workflow
+# during prompt validation, before expensive sampling. Keep the original IDs
+# for existing single-segment graphs; these aliases share the same classes.
+NODE_CLASS_MAPPINGS.update({
+    "CRTP_H3DecodeAndTrimV2": CRTP_H3DecodeAndTrim,
+    "CRTP_H3AssembleTakesV2": CRTP_H3AssembleTakes,
+})
 NODE_DISPLAY_NAME_MAPPINGS = {
     "CRTP_H3StateFromLatent": "CRTP H3 State from Latent",
     "CRTP_SaveH3State": "CRTP Save H3 State",
@@ -597,6 +604,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "CRTP_H3SelectLatentContext": "CRTP H3 Select Latent Context",
     "CRTP_H3PrepareLatentGeneration": "CRTP H3 Prepare Latent Generation",
     "CRTP_H3DecodeAndTrim": "CRTP H3 Decode and Trim",
+    "CRTP_H3DecodeAndTrimV2": "CRTP H3 Decode and Trim (V2)",
     "CRTP_H3SaveTake": "CRTP H3 Save Take",
     "CRTP_H3AssembleTakes": "CRTP H3 Assemble Takes",
+    "CRTP_H3AssembleTakesV2": "CRTP H3 Assemble Takes (V2)",
 }

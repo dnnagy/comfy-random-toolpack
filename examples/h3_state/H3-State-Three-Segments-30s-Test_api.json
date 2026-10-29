@@ -233,7 +233,7 @@
     }
   },
   "14": {
-    "class_type": "CRTP_H3DecodeAndTrim",
+    "class_type": "CRTP_H3DecodeAndTrimV2",
     "inputs": {
       "samples": [
         "13",
@@ -401,7 +401,7 @@
     }
   },
   "114": {
-    "class_type": "CRTP_H3DecodeAndTrim",
+    "class_type": "CRTP_H3DecodeAndTrimV2",
     "inputs": {
       "samples": [
         "113",
@@ -569,7 +569,7 @@
     }
   },
   "214": {
-    "class_type": "CRTP_H3DecodeAndTrim",
+    "class_type": "CRTP_H3DecodeAndTrimV2",
     "inputs": {
       "samples": [
         "213",
@@ -680,7 +680,7 @@
     }
   },
   "300": {
-    "class_type": "CRTP_H3AssembleTakes",
+    "class_type": "CRTP_H3AssembleTakesV2",
     "inputs": {
       "state_paths": "",
       "filename_prefix": "h3_test/three_segments/continuous_30s",

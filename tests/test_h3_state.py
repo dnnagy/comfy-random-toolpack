@@ -1,5 +1,6 @@
 """Real torch/safetensors/FFmpeg CPU tests; only model execution is stubbed."""
 import importlib.util
+import inspect
 import json
 from pathlib import Path
 import shutil
@@ -57,7 +58,7 @@ class H3StateTests(unittest.TestCase):
             return h3.CRTP_H3PrepareLatentGeneration().run([[torch.ones(1), {"minimax_refs": ["original-reference"]}]], context, seconds, "h3_vae")
 
     def test_eight_nodes_registered(self):
-        self.assertEqual(len(h3.NODE_CLASS_MAPPINGS), 8)
+        self.assertEqual(len(set(h3.NODE_CLASS_MAPPINGS.values())), 8)
         for cls in h3.NODE_CLASS_MAPPINGS.values():
             self.assertIn("required", cls.INPUT_TYPES())
             self.assertTrue(callable(getattr(cls(), cls.FUNCTION)))
@@ -261,6 +262,27 @@ class H3StateTests(unittest.TestCase):
             done.add(id)
         for id in graph:
             visit(id,set())
+
+    def test_three_segment_requires_versioned_nodes_before_sampling(self):
+        base = Path(__file__).parents[1] / "examples/h3_state"
+        graph = json.loads((base / "H3-State-Three-Segments-30s-Test_api.json").read_text())
+        ui = json.loads((base / "H3-State-Three-Segments-30s-Test.json").read_text())
+        ui_types = {str(node["id"]): node["type"] for node in ui["nodes"]}
+        expected = {"14": "CRTP_H3DecodeAndTrimV2", "114": "CRTP_H3DecodeAndTrimV2",
+                    "214": "CRTP_H3DecodeAndTrimV2", "300": "CRTP_H3AssembleTakesV2"}
+        legacy_registry = {name: cls for name, cls in h3.NODE_CLASS_MAPPINGS.items() if not name.endswith("V2")}
+        for id, name in expected.items():
+            self.assertEqual(graph[id]["class_type"], name)
+            self.assertEqual(ui_types[id], name)
+            self.assertNotIn(name, legacy_registry)
+        # Exercise the execution engine's keyword binding for every H3 state node.
+        for node in graph.values():
+            if node["class_type"] not in h3.NODE_CLASS_MAPPINGS:
+                continue
+            cls = h3.NODE_CLASS_MAPPINGS[node["class_type"]]
+            inspect.signature(getattr(cls(), cls.FUNCTION)).bind(**node["inputs"])
+        self.assertIs(h3.NODE_CLASS_MAPPINGS["CRTP_H3DecodeAndTrimV2"], h3.CRTP_H3DecodeAndTrim)
+        self.assertIs(h3.NODE_CLASS_MAPPINGS["CRTP_H3AssembleTakesV2"], h3.CRTP_H3AssembleTakes)
 
     @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "FFmpeg required")
     def test_three_takes_exact_30s_export_and_stable_parent_ids(self):

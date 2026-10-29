@@ -699,7 +699,7 @@
     },
     {
       "id": 14,
-      "type": "CRTP_H3DecodeAndTrim",
+      "type": "CRTP_H3DecodeAndTrimV2",
       "pos": [
         2550,
         300
@@ -767,7 +767,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "CRTP_H3DecodeAndTrim"
+        "Node name for S&R": "CRTP_H3DecodeAndTrimV2"
       },
       "widgets_values": []
     },
@@ -849,7 +849,7 @@
         "Node name for S&R": "Note"
       },
       "widgets_values": [
-        "Upload the first image and edit PROMPT 1, 2, 3. Queue once.\nOne shared diffusion loader, text encoder loader, video VAE and audio VAE; the scheduler and sampler selection are shared too.\nSegment 1 starts from the image. Segments 2/3 use the previous raw sampled state's last 22 frames, including audio context.\nThe generated overlap is removed once. Three original segment videos/states and the assembled output are saved automatically.\nAll sampling finishes before output decoding. Shared loaders avoid duplicate graph loads; ComfyUI can still move models between RAM and VRAM.\nNative timing: 243 + (260-22) + (260-22) = 719 frames. Final export repeats ONLY the final frame once and pads audio to reach 720 frames / 30 seconds. Masters remain unmodified.\nChanging durations changes the total; pad_final_frame always adds exactly one frame.\nRequires the updated CRTP optional decode/assembly inputs. No refinement or seam smoothing. A continuous shot is prompted, not guaranteed by concatenation."
+        "Upload the first image and edit PROMPT 1, 2, 3. Queue once.\nOne shared diffusion loader, text encoder loader, video VAE and audio VAE; the scheduler and sampler selection are shared too.\nSegment 1 starts from the image. Segments 2/3 use the previous raw sampled state's last 22 frames, including audio context.\nThe generated overlap is removed once. Three original segment videos/states and the assembled output are saved automatically.\nAll sampling finishes before output decoding. Shared loaders avoid duplicate graph loads; ComfyUI can still move models between RAM and VRAM.\nNative timing: 243 + (260-22) + (260-22) = 719 frames. Final export repeats ONLY the final frame once and pads audio to reach 720 frames / 30 seconds. Masters remain unmodified.\nChanging durations changes the total; pad_final_frame always adds exactly one frame.\nRequires CRTP V2 decoder/assembler IDs; update CRTP and restart ComfyUI if missing. No refinement or seam smoothing. A continuous shot is prompted, not guaranteed by concatenation."
       ]
     },
     {
@@ -1160,7 +1160,7 @@
     },
     {
       "id": 114,
-      "type": "CRTP_H3DecodeAndTrim",
+      "type": "CRTP_H3DecodeAndTrimV2",
       "pos": [
         2550,
         1900
@@ -1228,7 +1228,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "CRTP_H3DecodeAndTrim"
+        "Node name for S&R": "CRTP_H3DecodeAndTrimV2"
       },
       "widgets_values": []
     },
@@ -1598,7 +1598,7 @@
     },
     {
       "id": 214,
-      "type": "CRTP_H3DecodeAndTrim",
+      "type": "CRTP_H3DecodeAndTrimV2",
       "pos": [
         2550,
         3500
@@ -1666,7 +1666,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "CRTP_H3DecodeAndTrim"
+        "Node name for S&R": "CRTP_H3DecodeAndTrimV2"
       },
       "widgets_values": []
     },
@@ -1870,7 +1870,7 @@
     },
     {
       "id": 300,
-      "type": "CRTP_H3AssembleTakes",
+      "type": "CRTP_H3AssembleTakesV2",
       "pos": [
         3350,
         300
@@ -1907,7 +1907,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "CRTP_H3AssembleTakes"
+        "Node name for S&R": "CRTP_H3AssembleTakesV2"
       },
       "widgets_values": [
         "",
