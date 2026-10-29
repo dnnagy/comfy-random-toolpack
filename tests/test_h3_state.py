@@ -57,11 +57,24 @@ class H3StateTests(unittest.TestCase):
         with patch.dict(sys.modules, {"comfy_extras.nodes_minimax_h3": native}):
             return h3.CRTP_H3PrepareLatentGeneration().run([[torch.ones(1), {"minimax_refs": ["original-reference"]}]], context, seconds, "h3_vae")
 
-    def test_eight_nodes_registered(self):
-        self.assertEqual(len(set(h3.NODE_CLASS_MAPPINGS.values())), 8)
+    def test_state_nodes_registered(self):
+        self.assertEqual(len(set(h3.NODE_CLASS_MAPPINGS.values())), 9)
         for cls in h3.NODE_CLASS_MAPPINGS.values():
             self.assertIn("required", cls.INPUT_TYPES())
             self.assertTrue(callable(getattr(cls(), cls.FUNCTION)))
+
+    def test_app_state_has_downloadable_descriptor_and_legacy_trim(self):
+        state, = h3.CRTP_H3StateFromLatent().run(av(56), "av_clip", "sampled", "h3_vae", trim_head=22)
+        self.assertEqual(state["meta"]["delivered_start"], 22)
+        self.assertEqual(h3.CRTP_H3StateProperties().run(state), (32,32))
+        result = h3.CRTP_SaveH3State().run(state, "app/state")
+        item, = result["ui"]["files"]
+        self.assertEqual(item["type"], "output")
+        path = self.root / item["subfolder"] / item["filename"]
+        self.assertTrue(path.is_file())
+        self.assertEqual(h3.read_state(path)["meta"]["delivered_start"],22)
+        with self.assertRaisesRegex(ValueError,"frame range"):
+            h3.CRTP_H3StateFromLatent().run(av(22), "av_clip", "sampled", "h3_vae", trim_head=22)
 
     def test_dtype_exact_roundtrip_and_lazy_header(self):
         for dtype in (torch.float16, torch.bfloat16, torch.float32):

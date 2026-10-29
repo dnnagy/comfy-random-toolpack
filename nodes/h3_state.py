@@ -212,10 +212,30 @@ class CRTP_H3StateFromLatent:
                 "kind": (["av_clip", "image_keyframe"],),
                 "origin": (["sampled", "encoded_pixels"],),
                 "vae_id": ("STRING", {"default": "minimax_h3_video_vae_fp16.safetensors"})},
-                "optional": {"plan": (PLAN,)}}
+                "optional": {"plan": (PLAN,), "trim_head": ("INT", {"default": 0, "min": 0})}}
 
-    def run(self, latent, kind, origin, vae_id, plan=None):
-        return (make_state(latent, kind, origin, vae_id, plan),)
+    def run(self, latent, kind, origin, vae_id, plan=None, trim_head=0):
+        state = make_state(latent, kind, origin, vae_id, plan)
+        if trim_head:
+            if plan is not None:
+                raise ValueError("Use the generation plan or trim_head, not both.")
+            state["meta"]["delivered_start"] = trim_head
+            validate_header(state["meta"], *tensor_description(state["tensors"]))
+        return (state,)
+
+
+class CRTP_H3StateProperties:
+    CATEGORY = CATEGORY
+    FUNCTION = "run"
+    RETURN_TYPES = ("INT", "INT")
+    RETURN_NAMES = ("width", "height")
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"state": (STATE,)}}
+
+    def run(self, state):
+        return state["meta"]["width"], state["meta"]["height"]
 
 
 class CRTP_SaveH3State:
@@ -232,7 +252,10 @@ class CRTP_SaveH3State:
     def run(self, state, filename_prefix):
         path = write_state(state, str(output_base(filename_prefix)) + ".safetensors")
         print(f"CRTP H3 saved state: {path}")
-        return {"ui": {"text": [path]}, "result": (state, path)}
+        import folder_paths
+        relative = Path(path).relative_to(Path(folder_paths.get_output_directory()).resolve())
+        return {"ui": {"text": [path], "files": [{"filename": relative.name,
+                "subfolder": relative.parent.as_posix(), "type": "output"}]}, "result": (state, path)}
 
 
 class CRTP_LazyLoadH3State:
@@ -602,6 +625,7 @@ NODE_CLASS_MAPPINGS = {cls.__name__: cls for cls in (
     CRTP_H3StateFromLatent, CRTP_SaveH3State, CRTP_LazyLoadH3State,
     CRTP_H3SelectLatentContext, CRTP_H3PrepareLatentGeneration,
     CRTP_H3DecodeAndTrim, CRTP_H3SaveTake, CRTP_H3AssembleTakes,
+    CRTP_H3StateProperties,
 )}
 # Versioned graph IDs make older installs reject the three-segment workflow
 # during prompt validation, before expensive sampling. Keep the original IDs
@@ -612,6 +636,7 @@ NODE_CLASS_MAPPINGS.update({
 })
 NODE_DISPLAY_NAME_MAPPINGS = {
     "CRTP_H3StateFromLatent": "CRTP H3 State from Latent",
+    "CRTP_H3StateProperties": "CRTP H3 State Dimensions",
     "CRTP_SaveH3State": "CRTP Save H3 State",
     "CRTP_LazyLoadH3State": "CRTP Lazy Load H3 State",
     "CRTP_H3SelectLatentContext": "CRTP H3 Select Latent Context",

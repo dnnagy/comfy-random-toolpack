@@ -283,3 +283,14 @@ The Ubuntu 22.04 pod ships FFmpeg 4.4, which rejects `-fps_mode`. Assembly uses
 FFmpeg failures now include stderr in the node error instead of only the command
 and exit status. Update CRTP and restart ComfyUI to load this fix, then queue only
 the assembly workflow. Saved takes survive the restart.
+
+### App integration helpers
+
+`CRTP_H3StateProperties` exposes the saved width/height without decoding or
+loading the full tensors. Latent continuation uses these dimensions for reference
+conditioning as well as the fresh sampling target. `CRTP_H3StateFromLatent` accepts
+an optional `trim_head` for legacy pixel-guided workflows that do not have a CRTP
+generation plan. `CRTP_SaveH3State` now emits a downloadable `files` descriptor in
+Comfy history, in addition to its text/path outputs. Existing node IDs remain valid.
+The app adds generation metadata and the final delivered-video checksum to the
+safetensors header without modifying tensor bytes.
